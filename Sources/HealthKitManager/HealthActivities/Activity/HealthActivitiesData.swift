@@ -13,7 +13,8 @@ public protocol HealthActivitiesData {
     func getTotalActiveMinutesWalking(by date: Date) async throws -> Double
     func getDistanceByWalkingAndRunning(by date: Date, unit: HKUnit) async throws -> Double?
     func getCaloriesBurned(by date: Date) async throws -> Double?
-    @MainActor func getWalkingActivityData(by date: Date) async throws -> WalkingActivityData
+    func getWalkingActivityData(by date: Date) async throws -> WalkingActivityData
+    func getWalkingActivityInBakground(date: Date) async throws -> WalkingActivityData
 }
 
 extension HealthActivitiesData {
@@ -38,8 +39,12 @@ extension HealthActivitiesData {
         try await HealthKitManager.shared.getActiveEnergyBurned(date: Date())
     }
     
-    @MainActor
     public func getWalkingActivityData(by date: Date) async throws -> WalkingActivityData {
-        try await HealthKitManager.shared.getWalkingActivity(date: date)
+        let manager = HealthKitManager.shared
+        return try await manager.getWalkingActivity(date: date, sampleTypes: manager.forWalkingActivityQuantityType)
+    }
+    
+    public func getWalkingActivityInBakground(date: Date) async throws -> WalkingActivityData {
+        try await HealthKitManager.shared.getWalkingActivityInBakground(date: date)
     }
 }

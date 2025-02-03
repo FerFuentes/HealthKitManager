@@ -17,6 +17,14 @@ class HealthKitManager: @unchecked Sendable {
     
     static let shared = HealthKitManager()
     
+    internal let forWalkingActivityQuantityType: Set = [
+        HKQuantityType(.heartRate),
+        HKQuantityType(.stepCount),
+        HKQuantityType(.distanceWalkingRunning),
+        HKQuantityType(.activeEnergyBurned),
+    ]
+    
+    
     internal func checkAuthorizationStatus(for type: HKObjectType) throws -> Bool {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw Permission.Error.unavailable
@@ -34,7 +42,7 @@ class HealthKitManager: @unchecked Sendable {
     }
 
     @MainActor
-    internal func requestAuthorization(toWrite: Set<HKSampleType>, toRead: Set<HKObjectType>) async throws {
+    internal func statusForAuthorizationRequest(toWrite: Set<HKSampleType>, toRead: Set<HKObjectType>) async throws {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw Permission.Error.unavailable
         }

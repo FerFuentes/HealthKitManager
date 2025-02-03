@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct WalkingActivityData: Codable {
+public struct WalkingActivityData: @unchecked Sendable, Codable {
     public let date: Date?
     public let steps: Double?
     public let activeCalories: Double?

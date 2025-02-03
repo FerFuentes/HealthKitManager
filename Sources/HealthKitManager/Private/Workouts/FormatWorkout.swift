@@ -32,38 +32,45 @@ extension HealthKitManager {
         
         let id = workout.uuid.uuidString
         let type = Workouts.from(activityType: workout.workoutActivityType)
-        
-        // Format the start and end times
+        let source = workout.sourceRevision.source.name
         let startTime = workout.startDate
         let endTime = workout.endDate
     
-        // Calculate duration in minutes
         let durationMinutes = workout.duration.minutes
         let restingHeartRate: Double? = try? await getRestingHeartRate(date: workout.startDate)
-        
-        let workoutMetadata = WorkoutMetadata(from: workout.metadata)
-        let metadata: Metadata = await formatWorkouMetadata(workout)
+    
+        let metadata: Metadata = formatWorkouMetadata(workout.metadata)
+        let appStatistics: Statistics = formatAllStatistics(workout)
         
         let formattedWorkout = Workout(
             id: id,
             type: type,
+            source: source,
             startTime: startTime,
             endTime: endTime,
             durationMinutes: durationMinutes,
             restingHeartRate: restingHeartRate,
-            averageMETs: workoutMetadata.averageMETs,
-            indoorWorkout: workoutMetadata.indoorWorkout,
-            timeZone: workoutMetadata.timeZone,
-            humidityPorcentage: workoutMetadata.humidity,
-            wetherTemperatureOnFahrenheit: workoutMetadata.temperature,
-            metadata: metadata
+            metadata: metadata,
+            statistics: appStatistics
         )
         
         return formattedWorkout
     }
     
-    @MainActor
-    internal func formatWorkouMetadata(_ workout: HKWorkout) async -> Metadata {
+    internal func formatWorkouMetadata(_ metadata: [String : Any]?) -> Metadata {
+        let workoutMetadata = WorkoutMetadata(from: metadata)
+        
+        return Metadata(
+            averageMETs: workoutMetadata.averageMETs,
+            indoorWorkout: workoutMetadata.indoorWorkout,
+            timeZone: workoutMetadata.timeZone,
+            humidityPorcentage: workoutMetadata.humidity,
+            wetherTemperatureOnFahrenheit: workoutMetadata.temperature
+        )
+
+    }
+    
+    internal func formatAllStatistics(_ workout: HKWorkout) -> Statistics {
 
         let distanceMeters = workout
             .statistics(for: HKQuantityType(.distanceWalkingRunning))?
@@ -88,7 +95,7 @@ extension HealthKitManager {
         let allStatistics = workout.allStatistics
         debugPrint(allStatistics)
 
-        return Metadata(
+        return Statistics(
             distanceMeters: distanceMeters,
             activeCalories: activeCalories,
             totalCalories: nil,

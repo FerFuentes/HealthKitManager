@@ -16,19 +16,24 @@ public struct WorkoutData: Codable {
 public struct Workout: Codable, Identifiable {
     public let id: String
     public let type: Workouts?
+    public let source: String?
     public let startTime: Date
     public let endTime: Date
     public let durationMinutes: Double?
     public let restingHeartRate: Double?
+    public let metadata: Metadata?
+    public let statistics: Statistics?
+}
+
+public struct Metadata: Codable {
     public let averageMETs: Double?
     public let indoorWorkout: Bool?
     public let timeZone: String?
     public let humidityPorcentage: Double?
     public let wetherTemperatureOnFahrenheit: Double?
-    public let metadata: Metadata?
 }
 
-public struct Metadata: Codable {
+public struct Statistics: Codable {
     public let distanceMeters: Double?
     public let activeCalories: Double?
     public let totalCalories: Double?
