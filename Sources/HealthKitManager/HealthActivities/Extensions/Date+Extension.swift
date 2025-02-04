@@ -14,6 +14,14 @@ extension Date {
         return formatter.string(from: self)
     }
     
+    public func formattedDate(with format: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = format
+        formatter.locale = Locale.current
+        formatter.timeZone = TimeZone.current
+        return formatter.string(from: self)
+    }
+    
     public func formattedTime() -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
