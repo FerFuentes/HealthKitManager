@@ -15,6 +15,7 @@ public protocol HealthActivitiesData {
     func getCaloriesBurned(by date: Date) async throws -> Double?
     func getWalkingActivityData(by date: Date) async throws -> WalkingActivityData
     func getWalkingActivityInBakground(date: Date) async throws -> WalkingActivityData
+    func getAverageHeartRate(date: Date) async throws -> Double?
 }
 
 extension HealthActivitiesData {
@@ -46,5 +47,9 @@ extension HealthActivitiesData {
     
     public func getWalkingActivityInBakground(date: Date) async throws -> WalkingActivityData {
         try await HealthKitManager.shared.getWalkingActivityInBakground(date: date)
+    }
+    
+    public func getAverageHeartRate(date: Date) async throws -> Double? {
+        try await HealthKitManager.shared.getAverageHeartRate(date: date)
     }
 }
