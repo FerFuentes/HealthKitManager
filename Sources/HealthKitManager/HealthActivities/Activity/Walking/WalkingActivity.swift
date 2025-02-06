@@ -8,7 +8,7 @@
 import Foundation
 import HealthKit
 
-public protocol HealthActivitiesData {
+public protocol WalkingActivity {
     func getStepsCount(by date: Date) async throws -> Int?
     func getTotalActiveMinutesWalking(by date: Date) async throws -> Double
     func getDistanceByWalkingAndRunning(by date: Date, unit: HKUnit) async throws -> Double?
@@ -18,7 +18,7 @@ public protocol HealthActivitiesData {
     func getAverageHeartRate(date: Date) async throws -> Double?
 }
 
-extension HealthActivitiesData {
+extension WalkingActivity {
     
     @MainActor
     public func getStepsCount(by date: Date) async throws -> Int? {
