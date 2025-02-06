@@ -8,7 +8,7 @@
 import Foundation
 import HealthKit
 
-public protocol HealthWorkoutsData {
+public protocol WorkoutsActivity {
     @MainActor func getHKWorkoutForWalking(by date: Date) async throws -> [HKWorkout]
     @MainActor func getHKWorkoutsByType(ofType type: Workouts, date: Date) async throws -> [HKWorkout]
     @MainActor func getAllHKWorkouts(date: Date) async throws -> [HKWorkout]
@@ -19,7 +19,7 @@ public protocol HealthWorkoutsData {
     @MainActor func getAllWorkouts(date: Date) async throws -> WorkoutData
 }
 
-extension HealthWorkoutsData {
+extension WorkoutsActivity {
     
     @MainActor
     public func getHKWorkoutForWalking(by date: Date) async throws -> [HKWorkout] {
