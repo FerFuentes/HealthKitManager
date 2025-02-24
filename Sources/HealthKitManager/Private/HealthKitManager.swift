@@ -24,7 +24,6 @@ class HealthKitManager: @unchecked Sendable {
         HKQuantityType(.activeEnergyBurned),
     ]
     
-    
     internal func checkAuthorizationStatus(for type: HKObjectType) throws -> Bool {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw Permission.Error.unavailable
@@ -130,4 +129,23 @@ class HealthKitManager: @unchecked Sendable {
         )
     }
     
+    internal func getPredicateForSleep(date: Date) -> HKSamplePredicate<HKCategorySample> {
+        let sleepSampleType = HKCategoryType(.sleepAnalysis)
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = calendar.startOfDay(for: date)
+        let endDate = calendar.date(byAdding: .day, value: 1, to: startDate)!
+        
+        let predicateForSamples = HKQuery.predicateForSamples(withStart: startDate, end: endDate)
+        return HKSamplePredicate.categorySample(type: sleepSampleType, predicate: predicateForSamples)
+    }
+    
+    internal func getDescriptorForSleep(date: Date)  -> HKSampleQueryDescriptor<HKCategorySample> {
+        let predicate = getPredicateForSleep(date: date)
+        
+        return HKSampleQueryDescriptor(
+            predicates: [predicate],
+            sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)]
+        )
+    }
+
 }
