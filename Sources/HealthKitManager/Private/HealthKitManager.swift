@@ -132,8 +132,8 @@ class HealthKitManager: @unchecked Sendable {
     internal func getPredicateForSleep(date: Date) -> HKSamplePredicate<HKCategorySample> {
         let sleepSampleType = HKCategoryType(.sleepAnalysis)
         let calendar = Calendar(identifier: .gregorian)
-        let startDate = calendar.startOfDay(for: date)
-        let endDate = calendar.date(byAdding: .day, value: 1, to: startDate)!
+        let startDate = calendar.date(byAdding: .hour, value: -9, to: calendar.startOfDay(for: date))!
+        let endDate = calendar.date(byAdding: .hour, value: 15, to: calendar.startOfDay(for: date))!
         
         let predicateForSamples = HKQuery.predicateForSamples(withStart: startDate, end: endDate)
         return HKSamplePredicate.categorySample(type: sleepSampleType, predicate: predicateForSamples)
