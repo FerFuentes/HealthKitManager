@@ -40,7 +40,6 @@ class HealthKitManager: @unchecked Sendable {
         }
     }
 
-    @MainActor
     internal func statusForAuthorizationRequest(toWrite: Set<HKSampleType>, toRead: Set<HKObjectType>) async throws {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw Permission.Error.unavailable
@@ -108,43 +107,6 @@ class HealthKitManager: @unchecked Sendable {
             options: options,
             anchorDate: anchorDate,
             intervalComponents: interval
-        )
-    }
-    
-    internal func getPredicateForWorkouts(date: Date) ->  HKSamplePredicate<HKWorkout> {
-        let calendar = Calendar(identifier: .gregorian)
-        let startDate = calendar.startOfDay(for: date)
-        let endDate = calendar.date(byAdding: .day, value: 1, to: startDate)!
-        
-        let predicateForSamples = HKQuery.predicateForSamples(withStart: startDate, end: endDate)
-        return HKSamplePredicate.workout(predicateForSamples)
-    }
-    
-    internal func getDescriptorForWorkout(date: Date) -> HKSampleQueryDescriptor<HKWorkout> {
-        let predicate = getPredicateForWorkouts(date: date)
-        
-        return HKSampleQueryDescriptor(
-            predicates: [predicate],
-            sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)]
-        )
-    }
-    
-    internal func getPredicateForSleep(date: Date) -> HKSamplePredicate<HKCategorySample> {
-        let sleepSampleType = HKCategoryType(.sleepAnalysis)
-        let calendar = Calendar(identifier: .gregorian)
-        let startDate = calendar.date(byAdding: .hour, value: -9, to: calendar.startOfDay(for: date))!
-        let endDate = calendar.date(byAdding: .hour, value: 15, to: calendar.startOfDay(for: date))!
-        
-        let predicateForSamples = HKQuery.predicateForSamples(withStart: startDate, end: endDate)
-        return HKSamplePredicate.categorySample(type: sleepSampleType, predicate: predicateForSamples)
-    }
-    
-    internal func getDescriptorForSleep(date: Date)  -> HKSampleQueryDescriptor<HKCategorySample> {
-        let predicate = getPredicateForSleep(date: date)
-        
-        return HKSampleQueryDescriptor(
-            predicates: [predicate],
-            sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)]
         )
     }
 

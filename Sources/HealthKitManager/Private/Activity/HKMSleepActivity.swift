@@ -8,6 +8,25 @@ import HealthKit
 
 extension HealthKitManager {
     
+    private func getPredicateForSleep(date: Date) -> HKSamplePredicate<HKCategorySample> {
+        let sleepSampleType = HKCategoryType(.sleepAnalysis)
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = calendar.date(byAdding: .hour, value: -9, to: calendar.startOfDay(for: date))!
+        let endDate = calendar.date(byAdding: .hour, value: 15, to: calendar.startOfDay(for: date))!
+        
+        let predicateForSamples = HKQuery.predicateForSamples(withStart: startDate, end: endDate)
+        return HKSamplePredicate.categorySample(type: sleepSampleType, predicate: predicateForSamples)
+    }
+    
+    private func getDescriptorForSleep(date: Date)  -> HKSampleQueryDescriptor<HKCategorySample> {
+        let predicate = getPredicateForSleep(date: date)
+        
+        return HKSampleQueryDescriptor(
+            predicates: [predicate],
+            sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)]
+        )
+    }
+    
     func getSleepActivity(date: Date) async throws -> SleepActivityData {
         var awakeTimes: Int = 0
         var asleepREMSeconds: Double = 0
