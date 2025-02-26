@@ -63,17 +63,22 @@ class HealthKitManager: @unchecked Sendable {
         }
     }
     
-    internal func getPredicate(date: Date) -> NSCompoundPredicate {
+    internal func getPredicate(date: Date, excludeManual: Bool = true) -> NSCompoundPredicate {
         let calendar = Calendar(identifier: .gregorian)
         let startDate = calendar.startOfDay(for: date)
         let endDate = calendar.date(byAdding: .day, value: 1, to: startDate)!
         
         let predicateForSamples = HKQuery.predicateForSamples(withStart: startDate, end: endDate)
-        let excludeManual = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
-        return NSCompoundPredicate(andPredicateWithSubpredicates: [predicateForSamples, excludeManual])
+        
+        if excludeManual {
+            let excludeManualPredicate = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
+            return NSCompoundPredicate(andPredicateWithSubpredicates: [predicateForSamples, excludeManualPredicate])
+        }
+        
+        return NSCompoundPredicate(andPredicateWithSubpredicates: [predicateForSamples])
     }
     
-    internal func getDescriptor(date: Date, type: HKQuantityType, options: HKStatisticsOptions) -> HKStatisticsCollectionQueryDescriptor {
+    internal func getDescriptor(date: Date, type: HKQuantityType, options: HKStatisticsOptions, excludeManual: Bool = true) -> HKStatisticsCollectionQueryDescriptor {
         let calendar = Calendar(identifier: .gregorian)
         let startDate = calendar.startOfDay(for: date)
         let anchorDate = calendar.date(bySetting: .hour, value: 0, of: startDate)!
@@ -82,7 +87,7 @@ class HealthKitManager: @unchecked Sendable {
         interval.day = 1
                 
         return HKStatisticsCollectionQueryDescriptor(
-            predicate: HKSamplePredicate.quantitySample(type: type, predicate: getPredicate(date: date)),
+            predicate: HKSamplePredicate.quantitySample(type: type, predicate: getPredicate(date: date, excludeManual: excludeManual)),
             options: options,
             anchorDate: anchorDate,
             intervalComponents: interval

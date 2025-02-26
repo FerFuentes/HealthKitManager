@@ -4,7 +4,6 @@
 //
 //  Created by Fernando Fuentes on 23/01/25.
 //
-import Foundation
 import HealthKit
 
 extension HealthKitManager {

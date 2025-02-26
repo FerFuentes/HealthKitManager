@@ -93,7 +93,6 @@ extension HealthKitManager {
             .doubleValue(for: HKUnit.count())
         
         let allStatistics = workout.allStatistics
-        debugPrint(allStatistics)
 
         return Statistics(
             distanceMeters: distanceMeters,
