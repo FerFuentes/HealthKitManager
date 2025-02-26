@@ -24,6 +24,13 @@ class HealthKitManager: @unchecked Sendable {
         HKQuantityType(.activeEnergyBurned),
     ]
     
+    internal let forDietaryNutritionQuantityType: Set = [
+        HKQuantityType(.dietaryEnergyConsumed),
+        HKQuantityType(.dietaryFatTotal),
+        HKQuantityType(.dietaryCarbohydrates),
+        HKQuantityType(.dietaryProtein)
+    ]
+    
     internal func checkAuthorizationStatus(for type: HKObjectType) throws -> Bool {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw Permission.Error.unavailable

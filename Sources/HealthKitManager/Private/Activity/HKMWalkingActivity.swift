@@ -90,7 +90,7 @@ extension HealthKitManager {
                     activeCalories = try await getDescriptor(
                         date: date,
                         type: quantityType,
-                        options: []
+                        options: .cumulativeSum
                     ).result(for: healthStore)
                         .statistics(for: date)?
                         .sumQuantity()?
