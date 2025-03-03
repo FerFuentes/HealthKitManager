@@ -90,16 +90,14 @@ extension HealthKitManager {
                 completion(.failure(error))
                 return
             }
-            
-            let samples = Set(updatedSampleTypes ?? [])
 
-            if samples.isEmpty {
+            guard let updatedSampleTypes = updatedSampleTypes, !updatedSampleTypes.isEmpty else {
                 completion(.success(nil))
                 return
             }
 
             Task {
-                let activity = await self.getWalkingActivity(date: date, sampleTypes: samples)
+                let activity = await self.getWalkingActivity(date: date, sampleTypes: updatedSampleTypes)
                 completion(.success(activity))
             }
         }
