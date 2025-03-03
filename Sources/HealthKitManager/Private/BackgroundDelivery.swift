@@ -40,20 +40,71 @@ extension HealthKitManager {
         guard !queryDescriptors.isEmpty else { return [] }
         
         return try await withCheckedThrowingContinuation { continuation in
-
+            var didResume = false
             let query = HKObserverQuery(queryDescriptors: queryDescriptors) { _, updatedSampleTypes, completionHandler, error in
                 defer { completionHandler() }
-
+                
+                guard !didResume else { return }
+                
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else {
                     continuation.resume(returning: updatedSampleTypes ?? [])
                 }
-
+                
+                didResume = true
             }
             
             healthStore.execute(query)
         }
+    }
+    
+    internal func observeWalkingActivityInBackground(
+        date: Date,
+        types: Set<HKQuantityType>,
+        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
+    ) {
+        var queryDescriptors: [HKQueryDescriptor] = []
+
+        for type in types {
+            do {
+                _ = try self.checkAuthorizationStatus(for: type)
+                queryDescriptors.append(HKQueryDescriptor(sampleType: type, predicate: self.getPredicate(date: date)))
+            } catch {
+                debugPrint("Failed to authorize \(type): \(error.localizedDescription)")
+            }
+        }
+
+        // If no valid descriptors, return early with nil
+        guard !queryDescriptors.isEmpty else {
+            completion(.success(nil))
+            return
+        }
+        
+        
+
+        let query = HKObserverQuery(queryDescriptors: queryDescriptors) { _, updatedSampleTypes, completionHandler, error in
+            defer { completionHandler() }
+
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            let samples = Set(updatedSampleTypes ?? [])
+
+            if samples.isEmpty {
+                completion(.success(nil))
+                return
+            }
+
+            Task {
+                let activity = await self.getWalkingActivity(date: date, sampleTypes: samples)
+                completion(.success(activity))
+            }
+        }
+
+        healthStore.execute(query)
     }
     
 }
