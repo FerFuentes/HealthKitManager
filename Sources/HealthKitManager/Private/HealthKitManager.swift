@@ -36,6 +36,11 @@ class HealthKitManager: @unchecked Sendable {
         HKQuantityType(.restingHeartRate)
     ]
     
+    internal let forBodyMetricsQuantityType: Set = [
+        HKQuantityType(.height),
+        HKQuantityType(.bodyMass)
+    ]
+    
     internal func checkAuthorizationStatus(for type: HKObjectType) throws -> Bool {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw Permission.Error.unavailable
@@ -126,5 +131,5 @@ class HealthKitManager: @unchecked Sendable {
             intervalComponents: interval
         )
     }
-
+    
 }

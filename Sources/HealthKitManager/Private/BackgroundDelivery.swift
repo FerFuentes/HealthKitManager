@@ -40,19 +40,16 @@ extension HealthKitManager {
         guard !queryDescriptors.isEmpty else { return [] }
         
         return try await withCheckedThrowingContinuation { continuation in
-            var didResume = false
+
             let query = HKObserverQuery(queryDescriptors: queryDescriptors) { _, updatedSampleTypes, completionHandler, error in
                 defer { completionHandler() }
-                
-                guard !didResume else { return }
-                
+
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else {
                     continuation.resume(returning: updatedSampleTypes ?? [])
                 }
-                
-                didResume = true
+
             }
             
             healthStore.execute(query)
