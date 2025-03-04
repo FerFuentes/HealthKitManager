@@ -15,7 +15,7 @@ public protocol WalkingActivity {
     func getCaloriesBurned(by date: Date) async throws -> Double?
     func getWalkingActivityData(by date: Date) async -> WalkingActivityData
     func getWalkingActivityInBakground(date: Date) async throws -> WalkingActivityData
-    func observeWalkingActivityInBackground(by date: Date, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void)
+    func observeWalkingActivityInBackground(by date: Date) async throws -> WalkingActivityData?
     func getAverageHeartRate(date: Date) async throws -> Double?
     
 }
@@ -43,9 +43,9 @@ extension WalkingActivity {
         return await manager.getWalkingActivity(date: date, sampleTypes: manager.forWalkingActivityQuantityType)
     }
     
-    public func observeWalkingActivityInBackground(by date: Date, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {
+    public func observeWalkingActivityInBackground(by date: Date) async throws -> WalkingActivityData? {
         let manager = HealthKitManager.shared
-        return manager.observeWalkingActivityInBackground(date: date, types: manager.forWalkingActivityQuantityType, completion: completion)
+        return try await manager.observeWalkingActivityInBackground(date: date, types: manager.forWalkingActivityQuantityType)
     }
     
     public func getWalkingActivityInBakground(date: Date) async throws -> WalkingActivityData {

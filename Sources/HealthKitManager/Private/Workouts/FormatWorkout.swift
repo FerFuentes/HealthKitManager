@@ -91,8 +91,6 @@ extension HealthKitManager {
         let stepsCount: Double? = workout.statistics(for: HKQuantityType(.stepCount))?
             .sumQuantity()?
             .doubleValue(for: HKUnit.count())
-        
-        let allStatistics = workout.allStatistics
 
         return Statistics(
             distanceMeters: distanceMeters,
