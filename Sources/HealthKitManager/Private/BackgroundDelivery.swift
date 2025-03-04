@@ -26,10 +26,7 @@ extension HealthKitManager {
         }
     }
     
-    internal func observeHealthKitQuery(
-        date: Date,
-        types: Set<HKQuantityType>
-    ) async throws -> Set<HKSampleType> {
+    internal func observeHealthKitQuery(date: Date, types: Set<HKQuantityType>) async throws -> Set<HKSampleType> {
         var queryDescriptors: [HKQueryDescriptor] = []
         for type in types {
             do {
@@ -62,11 +59,13 @@ extension HealthKitManager {
         }
     }
     
-    func observeWalkingActivityInBackground(
+    internal func observeWalkingActivityInBackground(
         date: Date,
-        types: Set<HKQuantityType>
-    ) async throws -> WalkingActivityData? {
+        types: Set<HKQuantityType>,
+        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
+    ) {
         var queryDescriptors: [HKQueryDescriptor] = []
+
         for type in types {
             do {
                 _ = try self.checkAuthorizationStatus(for: type)
@@ -75,41 +74,40 @@ extension HealthKitManager {
                 debugPrint("Failed to authorize \(type): \(error.localizedDescription)")
             }
         }
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            let query = HKObserverQuery(queryDescriptors: queryDescriptors) { _, updatedSampleTypes, completionHandler, error in
-                defer { completionHandler() }
-                
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                
-                if let updatedSampleTypes = updatedSampleTypes {
-                    Task {
-                        let activity = await self.getWalkingActivity(date: date, sampleTypes: updatedSampleTypes)
 
-                        let total = [
-                            activity.steps ?? 0.0,
-                            activity.activeCalories ?? 0.0,
-                            activity.distanceMeters ?? 0.0,
-                            activity.durationMinutes ?? 0.0,
-                            activity.averageHeartRate ?? 0.0
-                        ].reduce(0.0, +)
+        let query = HKObserverQuery(queryDescriptors: queryDescriptors) { _, updatedSampleTypes, completionHandler, error in
+            defer { completionHandler() }
 
-                        if total > 0 {
-                            continuation.resume(returning: activity)
-                        } else {
-                            continuation.resume(returning: nil)
-                        }
-                    }
-                } else {
-                    continuation.resume(returning: nil)
-                }
+            if let error = error {
+                completion(.failure(error))
+                return
             }
 
-            healthStore.execute(query)
+            guard let updatedSampleTypes = updatedSampleTypes, !updatedSampleTypes.isEmpty else {
+                completion(.success(nil))
+                return
+            }
+
+            Task {
+                let activity = await self.getWalkingActivity(date: date, sampleTypes: updatedSampleTypes)
+
+                let total = [
+                    activity.steps ?? 0.0,
+                    activity.activeCalories ?? 0.0,
+                    activity.distanceMeters ?? 0.0,
+                    activity.durationMinutes ?? 0.0,
+                    activity.averageHeartRate ?? 0.0
+                ].reduce(0.0, +)
+
+                if total > 0 {
+                    completion(.success(activity))
+                } else {
+                    completion(.success(nil))
+                }
+            }
         }
+
+        healthStore.execute(query)
     }
     
 }
