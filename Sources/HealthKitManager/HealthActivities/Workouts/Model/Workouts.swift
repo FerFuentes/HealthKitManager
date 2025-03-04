@@ -7,7 +7,7 @@
 
 import HealthKit
 
-public enum Workouts: String, Codable, CaseIterable {
+public enum Workouts: String, Codable, CaseIterable, @unchecked Sendable {
     case walking = "Walking"
     case running = "Running"
     case cycling = "Cycling"

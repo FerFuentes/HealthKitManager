@@ -7,7 +7,6 @@
 import HealthKit
 
 extension HealthKitManager {
-    @MainActor
     func getDistanceWalkingRunning(date: Date, unit: HKUnit) async throws -> Double? {
         let type = HKQuantityType(.distanceWalkingRunning)
         _ = try checkAuthorizationStatus(for: type)

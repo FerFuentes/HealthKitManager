@@ -27,7 +27,6 @@ extension HealthKitManager {
         )
     }
     
-    @MainActor
     func getHKWorkouts(by type: Workouts, date: Date) async throws -> [HKWorkout] {
 
         let sample = try await getDescriptorForWorkout(
@@ -37,8 +36,7 @@ extension HealthKitManager {
 
         return sample
     }
-    
-    @MainActor
+
     func getWorkouts(by type: Workouts, date: Date) async throws -> WorkoutData {
         
         let sample = try await getDescriptorForWorkout(
@@ -48,8 +46,7 @@ extension HealthKitManager {
         
         return try await formatWorkout(sample)
     }
-    
-    @MainActor
+
     func getHKWorkoutForWalking(date: Date) async throws -> [HKWorkout] {
         
         let sample = try await getDescriptorForWorkout(
@@ -60,8 +57,7 @@ extension HealthKitManager {
 
         return sample
     }
-    
-    @MainActor
+
     func getWorkoutsForWalking(date: Date) async throws -> WorkoutData {
         
         let sample = try await getDescriptorForWorkout(
@@ -71,8 +67,7 @@ extension HealthKitManager {
         
         return try await formatWorkout(sample)
     }
-    
-    @MainActor
+
     func getAllHKWorkouts(date: Date) async throws -> [HKWorkout] {
         // Get all the allowed activity types from the Workouts enum
         let allowedActivityTypes = Set(Workouts.allCases.map { $0.activityType })
@@ -84,8 +79,7 @@ extension HealthKitManager {
         
         return sample
     }
-    
-    @MainActor
+
     func getAllWorkouts(date: Date) async throws -> WorkoutData {
         // Get all the allowed activity types from the Workouts enum
         let allowedActivityTypes = Set(Workouts.allCases.map { $0.activityType })

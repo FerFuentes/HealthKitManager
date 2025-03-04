@@ -7,7 +7,6 @@
 import HealthKit
 
 extension HealthKitManager {
-    
     private func getPredicateForSleep(date: Date) -> HKSamplePredicate<HKCategorySample> {
         let sleepSampleType = HKCategoryType(.sleepAnalysis)
         let calendar = Calendar(identifier: .gregorian)

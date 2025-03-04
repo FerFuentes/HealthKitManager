@@ -8,7 +8,6 @@ import Foundation
 import HealthKit
 
 extension HealthKitManager {
-    @MainActor
     func getAverageHeartRate(date: Date) async throws -> Double? {
         let type = HKQuantityType(.heartRate)
         _ = try checkAuthorizationStatus(for: type)
@@ -26,8 +25,7 @@ extension HealthKitManager {
         
         return Double(String(format: "%.2f", heartRate)) ?? 0.0
     }
-    
-    @MainActor
+
     func getRestingHeartRate(date: Date) async throws -> Double? {
         let type = HKQuantityType(.restingHeartRate)
         _ = try checkAuthorizationStatus(for: type)

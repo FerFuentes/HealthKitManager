@@ -133,4 +133,22 @@ class HealthKitManager: @unchecked Sendable {
         )
     }
     
+    internal func bacgroundDelivery(enable: Bool, types: Set<HKQuantityType>) async {
+        do {
+            if enable {
+                try await statusForAuthorizationRequest(toWrite: [], toRead: types)
+                for type in types {
+                    try await healthStore.enableBackgroundDelivery(for: type, frequency: .daily)
+                }
+            } else {
+                for type in types {
+                    try await healthStore.disableBackgroundDelivery(for: type)
+                }
+            }
+            
+        } catch {
+            debugPrint("Error enabling background delivery: \(error.localizedDescription)")
+        }
+    }
+    
 }

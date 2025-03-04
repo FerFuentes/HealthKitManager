@@ -9,44 +9,38 @@ import Foundation
 import HealthKit
 
 public protocol WorkoutsActivity {
-    @MainActor func getHKWorkoutForWalking(by date: Date) async throws -> [HKWorkout]
-    @MainActor func getHKWorkoutsByType(ofType type: Workouts, date: Date) async throws -> [HKWorkout]
-    @MainActor func getAllHKWorkouts(date: Date) async throws -> [HKWorkout]
+    func getHKWorkoutForWalking(by date: Date) async throws -> [HKWorkout]
+    func getHKWorkoutsByType(ofType type: Workouts, date: Date) async throws -> [HKWorkout]
+    func getAllHKWorkouts(date: Date) async throws -> [HKWorkout]
     
     
-    @MainActor func getWorkoutsForWalking(by date: Date) async throws -> WorkoutData
-    @MainActor func getWorkoutsByType(ofType type: Workouts, date: Date) async throws -> WorkoutData
-    @MainActor func getAllWorkouts(date: Date) async throws -> WorkoutData
+    func getWorkoutsForWalking(by date: Date) async throws -> WorkoutData
+    func getWorkoutsByType(ofType type: Workouts, date: Date) async throws -> WorkoutData
+    func getAllWorkouts(date: Date) async throws -> WorkoutData
 }
 
 extension WorkoutsActivity {
-    
-    @MainActor
+
     public func getHKWorkoutForWalking(by date: Date) async throws -> [HKWorkout] {
         try await HealthKitManager.shared.getHKWorkoutForWalking(date: date)
     }
-        
-    @MainActor
+
     public func getHKWorkoutsByType(ofType type: Workouts, date: Date) async throws -> [HKWorkout] {
         try await HealthKitManager.shared.getHKWorkouts(by: type, date: date)
     }
-    
-    @MainActor
+
     public func getAllHKWorkouts(date: Date) async throws -> [HKWorkout] {
         try await HealthKitManager.shared.getAllHKWorkouts(date: date)
     }
-    
-    @MainActor
+
     public func getWorkoutsForWalking(by date: Date) async throws -> WorkoutData {
         try await HealthKitManager.shared.getWorkoutsForWalking(date: date)
     }
-    
-    @MainActor
+
     public func getWorkoutsByType(ofType type: Workouts, date: Date) async throws -> WorkoutData {
         try await HealthKitManager.shared.getWorkouts(by: type, date: date)
     }
-    
-    @MainActor
+
     public func getAllWorkouts(date: Date) async throws -> WorkoutData {
         try await HealthKitManager.shared.getAllWorkouts(date: date)
     }

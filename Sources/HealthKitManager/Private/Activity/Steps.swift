@@ -7,7 +7,6 @@
 import HealthKit
 
 extension HealthKitManager {
-    @MainActor
     func getStepCount(date: Date) async throws -> Int? {
         let type = HKQuantityType(.stepCount)
         _ = try checkAuthorizationStatus(for: type)

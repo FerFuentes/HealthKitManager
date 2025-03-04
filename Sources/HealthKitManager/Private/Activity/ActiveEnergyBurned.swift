@@ -8,7 +8,6 @@ import Foundation
 import HealthKit
 
 extension HealthKitManager {
-    @MainActor
     func getActiveEnergyBurned(date: Date) async throws -> Double? {
         let type = HKQuantityType(.activeEnergyBurned)
         _ = try checkAuthorizationStatus(for: type)

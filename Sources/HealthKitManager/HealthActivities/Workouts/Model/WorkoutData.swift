@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct WorkoutData: Codable {
+public struct WorkoutData: Codable, @unchecked Sendable {
     public let deviceType: String
     public let dataSource: WorkoutSource
     public let workouts: [Workout]

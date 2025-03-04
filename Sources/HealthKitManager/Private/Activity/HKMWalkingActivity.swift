@@ -10,8 +10,45 @@ import HealthKit
 
 extension HealthKitManager {
 
+    internal func observeWalkingActivityInBackground(
+        date: Date,
+        types: Set<HKQuantityType>,
+        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
+    ) {
+        var queryDescriptors: [HKQueryDescriptor] = []
+
+        for type in types {
+            do {
+                _ = try self.checkAuthorizationStatus(for: type)
+                queryDescriptors.append(HKQueryDescriptor(sampleType: type, predicate: self.getPredicate(date: date)))
+            } catch {
+                debugPrint("Failed to authorize \(type): \(error.localizedDescription)")
+            }
+        }
+
+        let query = HKObserverQuery(queryDescriptors: queryDescriptors) { _, updatedSampleTypes, completionHandler, error in
+            defer { completionHandler() }
+
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let updatedSampleTypes = updatedSampleTypes, !updatedSampleTypes.isEmpty else {
+                completion(.success(nil))
+                return
+            }
+
+            Task {
+                let activity = await self.getWalkingActivity(date: date, sampleTypes: updatedSampleTypes)
+                completion(.success(activity))
+            }
+        }
+
+        healthStore.execute(query)
+    }
     
-    func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
+    internal func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
         var steps: Double?
         var activeCalories: Double?
         var durationMinutes: Double = 0.0
@@ -108,6 +145,5 @@ extension HealthKitManager {
             averageHeartRate: averageHeartRate
         )
     }
-    
     
 }

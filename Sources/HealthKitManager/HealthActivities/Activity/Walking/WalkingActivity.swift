@@ -43,7 +43,8 @@ extension WalkingActivity {
     }
     
     public func observeWalkingActivityInBackground(by date: Date, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {
-        return HealthKitManager.shared.executeAnchoredQueryForWalkingActivity(date: date, completion: completion)
+        let manager = HealthKitManager.shared
+        return manager.observeWalkingActivityInBackground(date: date, types: manager.forWalkingActivityQuantityType, completion: completion)
     }
     
     public func getAverageHeartRate(date: Date) async throws -> Double? {

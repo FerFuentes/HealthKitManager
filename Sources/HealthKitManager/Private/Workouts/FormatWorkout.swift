@@ -9,7 +9,6 @@ import Foundation
 import HealthKit
 
 extension HealthKitManager {
-    @MainActor
     internal func formatWorkout(_ workouts: [HKWorkout]) async throws -> WorkoutData {
         let deviceType: String = "iOS"
         let dataSource: WorkoutSource = .healthKit
@@ -26,8 +25,7 @@ extension HealthKitManager {
         // Return the formatted workout data
         return WorkoutData(deviceType: deviceType, dataSource: dataSource, workouts: formattedWorkouts)
     }
-    
-    @MainActor
+
     internal func formatSingleWorkout(_ workout: HKWorkout) async -> Workout? {
         
         let id = workout.uuid.uuidString
