@@ -90,20 +90,7 @@ extension HealthKitManager {
 
             Task {
                 let activity = await self.getWalkingActivity(date: date, sampleTypes: updatedSampleTypes)
-
-                let total = [
-                    activity.steps ?? 0.0,
-                    activity.activeCalories ?? 0.0,
-                    activity.distanceMeters ?? 0.0,
-                    activity.durationMinutes ?? 0.0,
-                    activity.averageHeartRate ?? 0.0
-                ].reduce(0.0, +)
-
-                if total > 0 {
-                    completion(.success(activity))
-                } else {
-                    completion(.success(nil))
-                }
+                completion(.success(activity))
             }
         }
 
