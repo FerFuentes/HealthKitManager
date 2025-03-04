@@ -10,10 +10,6 @@ import HealthKit
 
 extension HealthKitManager {
 
-    func getWalkingActivityInBakground(date: Date) async throws -> WalkingActivityData {
-        let sample = try await observeHealthKitQuery(date: date, types: forWalkingActivityQuantityType)
-        return await getWalkingActivity(date: date, sampleTypes: sample)
-    }
     
     func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
         var steps: Double?
@@ -112,4 +108,6 @@ extension HealthKitManager {
             averageHeartRate: averageHeartRate
         )
     }
+    
+    
 }

@@ -8,6 +8,7 @@ import HealthKit
 class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore
+    internal let walkingActivityQueryAnchor = "WalkingActivityQueryAnchor"
     
     private init(
         healthStore: HKHealthStore = HKHealthStore()
