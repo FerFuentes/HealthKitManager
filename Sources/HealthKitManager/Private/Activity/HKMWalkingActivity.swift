@@ -9,14 +9,6 @@ import Foundation
 import HealthKit
 
 extension HealthKitManager {
-    
-    enum WalkingActivityKey: String {
-        case steps
-        case calories
-        case distance
-        case duration
-        case heartRate
-    }
 
     internal func observeWalkingActivityInBackground(
         date: Date,
@@ -26,14 +18,9 @@ extension HealthKitManager {
         var queryDescriptors: [HKQueryDescriptor] = []
 
         for type in types {
-            do {
-                _ = try self.checkAuthorizationStatus(for: type)
-                queryDescriptors.append(HKQueryDescriptor(sampleType: type, predicate: self.getPredicate(date: date)))
-            } catch {
-                debugPrint("Failed to authorize \(type): \(error.localizedDescription)")
-            }
+            queryDescriptors.append(HKQueryDescriptor(sampleType: type, predicate: self.getPredicate(date: date)))
         }
-
+        
         let query = HKObserverQuery(queryDescriptors: queryDescriptors) { _, updatedSampleTypes, completionHandler, error in
             defer { completionHandler() }
 
@@ -49,6 +36,7 @@ extension HealthKitManager {
           
             Task {
                 let activity = await self.getWalkingActivity(date: date)
+                debugPrint(activity)
                 completion(.success(activity))
             }
         }
@@ -60,7 +48,7 @@ extension HealthKitManager {
         var steps: Double?
         var activeCalories: Double?
         var distanceMeters: Double?
-        var durationMinutes: Double = 0.0
+        var durationMinutes: Double?
         var averageHeartRate: Double?
 
         for sampleType in sampleTypes {
