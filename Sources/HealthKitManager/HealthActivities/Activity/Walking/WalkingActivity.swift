@@ -24,7 +24,7 @@ public protocol WalkingActivity {
 extension WalkingActivity {
     
     public var walkingActivityData: Published<WalkingActivityData?>.Publisher {
-        return HealthKitManager.shared.walkingActivity
+        return HealthKitManager.shared.$_walkingActivity
     }
     
     public func getStepsCount(by date: Date) async throws -> Double? {

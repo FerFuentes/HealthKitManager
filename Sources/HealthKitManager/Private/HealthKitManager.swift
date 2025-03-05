@@ -9,10 +9,8 @@ class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore
     internal let walkingActivityQueryAnchor = "WalkingActivityQueryAnchor"
-    
-    
+
     @Published internal var _walkingActivity: WalkingActivityData?
-    public var walkingActivity: Published<WalkingActivityData?>.Publisher { $_walkingActivity }
     
     private init(
         healthStore: HKHealthStore = HKHealthStore()
