@@ -18,6 +18,6 @@ extension DietaryNutrition {
     
     public func getDietaryNutritionData(by date: Date) async -> DietaryNutritionData {
         let manager = HealthKitManager.shared
-        return await HealthKitManager.shared.getDietaryNutrition(date: date, sampleTypes: manager.forDietaryNutritionQuantityType)
+        return await manager.getDietaryNutrition(date: date, sampleTypes: manager.forDietaryNutritionQuantityType)
     }
 }

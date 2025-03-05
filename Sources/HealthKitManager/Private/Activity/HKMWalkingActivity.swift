@@ -10,6 +10,7 @@ import HealthKit
 
 extension HealthKitManager {
 
+    
     internal func observeWalkingActivityInBackground(
         date: Date,
         types: Set<HKQuantityType>,
@@ -23,21 +24,15 @@ extension HealthKitManager {
         
         let query = HKObserverQuery(queryDescriptors: queryDescriptors) { _, updatedSampleTypes, completionHandler, error in
             defer { completionHandler() }
-
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-
-            guard let updatedSampleTypes = updatedSampleTypes, !updatedSampleTypes.isEmpty else {
-                completion(.success(nil))
-                return
-            }
-          
+            
             Task {
-                let activity = await self.getWalkingActivity(date: date)
-                debugPrint(activity)
-                completion(.success(activity))
+                if let error = error {
+                    completion(.failure(error))
+                } else {
+                    let activity = await self.getWalkingActivity(date: date)
+                    debugPrint(activity)
+                    completion(.success(activity))
+                }
             }
         }
 
