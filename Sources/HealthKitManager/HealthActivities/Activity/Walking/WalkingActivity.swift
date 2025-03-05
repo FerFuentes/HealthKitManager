@@ -23,7 +23,7 @@ public protocol WalkingActivity {
 
 extension WalkingActivity {
     
-    var walkingActivity: Published<WalkingActivityData?>.Publisher {
+    public var walkingActivity: Published<WalkingActivityData?>.Publisher {
         return HealthKitManager.shared.walkingActivity
     }
     
