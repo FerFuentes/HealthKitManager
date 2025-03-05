@@ -10,24 +10,12 @@ import HealthKit
 
 extension HealthKitManager {
     
-    actor WalkingActivityStore {
-        private(set) var steps: Double?
-           private(set) var activeCalories: Double?
-           private(set) var distanceMeters: Double?
-           private(set) var durationMinutes: Double?
-           private(set) var averageHeartRate: Double?
-
-           func update(quantityType: HKQuantityType, value: Double) async {
-               switch quantityType {
-               case HKQuantityType(.heartRate): averageHeartRate = value
-               case HKQuantityType(.stepCount): steps = value
-               case HKQuantityType(.distanceWalkingRunning): distanceMeters = value
-               case HKQuantityType(.activeEnergyBurned): activeCalories = value
-               default: break
-               }
-           }
-
-           func setDurationMinutes(_ value: Double) async { durationMinutes = value }
+    private enum WalkingActivityKey: String {
+        case steps
+        case calories
+        case distance
+        case duration
+        case heartRate
     }
 
     internal func observeWalkingActivityInBackground(
@@ -69,64 +57,68 @@ extension HealthKitManager {
     }
 
     internal func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
-        let store = WalkingActivityStore()
-
-        await withTaskGroup(of: (HKQuantityType?, Double?).self) { group in
+        var steps: Double?
+        var activeCalories: Double?
+        var distanceMeters: Double?
+        var durationMinutes: Double?
+        var averageHeartRate: Double?
+            
+        try? await withThrowingTaskGroup(of: (WalkingActivityKey, Double?).self) { group in
             for sampleType in sampleTypes {
                 guard let quantityType = sampleType as? HKQuantityType else { continue }
 
-                group.addTask {
-                    do {
-                        let value: Double? = try await {
-                            switch quantityType {
-                            case HKQuantityType(.heartRate):
-                                return try await self.getAverageHeartRate(date: date)
-                            case HKQuantityType(.stepCount):
-                                return try await self.getStepCount(date: date)
-                            case HKQuantityType(.distanceWalkingRunning):
-                                return try await self.getDistanceWalkingRunning(date: date, unit: .meter())
-                            case HKQuantityType(.activeEnergyBurned):
-                                return try await self.getActiveEnergyBurned(date: date)
-                            default:
-                                return nil
-                            }
-                        }()
-                        return (quantityType, value)
-                    } catch {
-                        debugPrint("Error fetching \(quantityType.identifier): \(error.localizedDescription)")
-                        return (quantityType, nil)
+                switch quantityType {
+                case HKQuantityType(.heartRate):
+                    group.addTask {
+                        return (.heartRate, try await self.getAverageHeartRate(date: date))
                     }
+                    
+                case HKQuantityType(.stepCount):
+                    group.addTask {
+                        return (.steps, try await self.getStepCount(date: date))
+                    }
+                    group.addTask {
+                        return (.duration, try await self.getTotalDurationInMinutes(date: date))
+                    }
+
+                case HKQuantityType(.distanceWalkingRunning):
+                    group.addTask {
+                        return (.distance, try await self.getDistanceWalkingRunning(date: date, unit: .meter()))
+                    }
+
+                case HKQuantityType(.activeEnergyBurned):
+                    group.addTask {
+                        return (.calories, try await self.getActiveEnergyBurned(date: date))
+                    }
+
+                default:
+                    print("Unknown quantity type")
                 }
             }
 
-            group.addTask {
-                do {
-                    let duration = try await self.getTotalDurationInMinutes(date: date)
-                    return (nil, duration)
-                } catch {
-                    debugPrint("Error fetching duration: \(error.localizedDescription)")
-                    return (nil, nil)
-                }
-            }
-
-            for await (quantityType, value) in group {
-                guard let value = value else { continue }
-
-                if let type = quantityType {
-                    await store.update(quantityType: type, value: value)
-                } else {
-                    await store.setDurationMinutes(value)
+            for try await (key, value) in group {
+                switch key {
+                case .steps:
+                    steps = value
+                case .calories:
+                    activeCalories = value
+                case .distance:
+                    distanceMeters = value
+                case .duration:
+                    durationMinutes = value
+                case .heartRate:
+                    averageHeartRate = value
                 }
             }
         }
 
-        return await WalkingActivityData(
+        return WalkingActivityData(
             date: date,
-            steps: store.steps,
-            activeCalories: store.activeCalories,
-            distanceMeters: store.distanceMeters,
-            durationMinutes: store.durationMinutes,
-            averageHeartRate: store.averageHeartRate
+            steps: steps,
+            activeCalories: activeCalories,
+            distanceMeters: distanceMeters,
+            durationMinutes: durationMinutes,
+            averageHeartRate: averageHeartRate
         )
     }
 
