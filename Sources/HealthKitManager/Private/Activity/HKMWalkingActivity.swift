@@ -109,7 +109,6 @@ extension HealthKitManager {
                 }
             }
 
-            // Collect results safely after all tasks complete
             for await (quantityType, value) in group {
                 guard let value = value else { continue }
 
