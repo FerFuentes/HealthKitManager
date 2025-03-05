@@ -153,4 +153,5 @@ class HealthKitManager: @unchecked Sendable {
         }
     }
     
+    
 }
