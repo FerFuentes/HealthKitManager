@@ -13,8 +13,7 @@ extension HealthKitManager {
     
     internal func observeWalkingActivityInBackground(
         date: Date,
-        types: Set<HKQuantityType>,
-        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
+        types: Set<HKQuantityType>
     ) {
         var queryDescriptors: [HKQueryDescriptor] = []
 
@@ -22,17 +21,17 @@ extension HealthKitManager {
             queryDescriptors.append(HKQueryDescriptor(sampleType: type, predicate: self.getPredicate(date: date)))
         }
         
-        let query = HKObserverQuery(queryDescriptors: queryDescriptors) { _, updatedSampleTypes, completionHandler, error in
-            Task {
-                if let error = error {
-                    completion(.failure(error))
-                } else {
-                    let activity = await self.getWalkingActivity(date: date)
-                    debugPrint(activity)
-                    completion(.success(activity))
+        let query = HKObserverQuery(queryDescriptors: queryDescriptors) { [weak self]  _, updatedSampleTypes, completionHandler, error in
+            defer { completionHandler() }
+        
+            if let error = error {
+                debugPrint("Error observing walking activity: \(error.localizedDescription)")
+                return
+            } else if let self = self {
+                Task {
+                    _walkingActivity = await self.getWalkingActivity(date: date)
                 }
             }
-            completionHandler()
         }
 
         healthStore.execute(query)
