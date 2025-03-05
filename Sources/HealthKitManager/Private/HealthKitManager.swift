@@ -9,8 +9,6 @@ class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore
     internal let walkingActivityQueryAnchor = "WalkingActivityQueryAnchor"
-
-    @Published internal var _walkingActivity: WalkingActivityData?
     
     private init(
         healthStore: HKHealthStore = HKHealthStore()
@@ -152,6 +150,5 @@ class HealthKitManager: @unchecked Sendable {
             debugPrint("Error enabling background delivery: \(error.localizedDescription)")
         }
     }
-    
     
 }
