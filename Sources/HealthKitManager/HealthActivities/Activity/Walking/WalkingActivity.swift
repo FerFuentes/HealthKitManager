@@ -15,15 +15,15 @@ public protocol WalkingActivity {
     func getDistanceByWalkingAndRunning(by date: Date, unit: HKUnit) async throws -> Double?
     func getCaloriesBurned(by date: Date) async throws -> Double?
     func getWalkingActivityData(by date: Date) async -> WalkingActivityData
-    func observeWalkingActivityInBackground(by date: Date)
-    var walkingActivity: Published<WalkingActivityData?>.Publisher { get }
     func getAverageHeartRate(date: Date) async throws -> Double?
     
+    func observeWalkingActivityInBackground(by date: Date)
+    var walkingActivityData: Published<WalkingActivityData?>.Publisher { get }
 }
 
 extension WalkingActivity {
     
-    public var walkingActivity: Published<WalkingActivityData?>.Publisher {
+    public var walkingActivityData: Published<WalkingActivityData?>.Publisher {
         return HealthKitManager.shared.walkingActivity
     }
     
