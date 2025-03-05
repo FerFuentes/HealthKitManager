@@ -13,25 +13,6 @@ class HealthKitManager: @unchecked Sendable {
     
     static let shared = HealthKitManager()
     
-    internal var walkigselQueryInProgress = false
-    
-    internal var walkingActivityQueryAnchor: HKQueryAnchor? {
-        get {
-            if let anchorData = UserDefaults.standard.data(forKey: "walkingActivityAnchor") {
-                return try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: anchorData)
-            }
-            return nil
-        }
-        set {
-            if let newAnchor = newValue {
-                let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: newAnchor, requiringSecureCoding: true)
-                UserDefaults.standard.set(anchorData, forKey: "walkingActivityAnchor")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "walkingActivityAnchor")
-            }
-        }
-    }
-    
     internal let forWalkingActivityQuantityType: Set = [
         HKQuantityType(.heartRate),
         HKQuantityType(.stepCount),
