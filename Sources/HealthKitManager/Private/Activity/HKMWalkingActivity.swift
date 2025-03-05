@@ -38,7 +38,13 @@ extension HealthKitManager {
                 completion(.success(nil))
                 return
             }
-            print("Samples: \(updatedSampleTypes.count)")
+            
+            for sample in updatedSampleTypes {
+                let id = sample as? HKQuantityType
+                print("Samples: \(id)")
+            }
+            
+          
             Task {
                 let activity = await self.getWalkingActivity(date: date, sampleTypes: updatedSampleTypes)
                 completion(.success(activity))
