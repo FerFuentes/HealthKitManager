@@ -10,7 +10,7 @@ import HealthKit
 
 extension HealthKitManager {
     
-    private enum WalkingActivityKey: String {
+    enum WalkingActivityKey: String {
         case steps
         case calories
         case distance
@@ -48,7 +48,7 @@ extension HealthKitManager {
             }
           
             Task {
-                let activity = await self.getWalkingActivity(date: date, sampleTypes: updatedSampleTypes)
+                let activity = await self.getWalkingActivity(date: date)
                 completion(.success(activity))
             }
         }
@@ -60,55 +60,31 @@ extension HealthKitManager {
         var steps: Double?
         var activeCalories: Double?
         var distanceMeters: Double?
-        var durationMinutes: Double?
+        var durationMinutes: Double = 0.0
         var averageHeartRate: Double?
-            
-        try? await withThrowingTaskGroup(of: (WalkingActivityKey, Double?).self) { group in
-            for sampleType in sampleTypes {
-                guard let quantityType = sampleType as? HKQuantityType else { continue }
 
+        for sampleType in sampleTypes {
+            guard let quantityType = sampleType as? HKQuantityType else { continue }
+            do {
                 switch quantityType {
                 case HKQuantityType(.heartRate):
-                    group.addTask {
-                        return (.heartRate, try await self.getAverageHeartRate(date: date))
-                    }
+                    averageHeartRate = try await self.getAverageHeartRate(date: date)
                     
                 case HKQuantityType(.stepCount):
-                    group.addTask {
-                        return (.steps, try await self.getStepCount(date: date))
-                    }
-                    group.addTask {
-                        return (.duration, try await self.getTotalDurationInMinutes(date: date))
-                    }
+                    steps = try await self.getStepCount(date: date)
+                    durationMinutes = try await self.getTotalDurationInMinutes(date: date)
 
                 case HKQuantityType(.distanceWalkingRunning):
-                    group.addTask {
-                        return (.distance, try await self.getDistanceWalkingRunning(date: date, unit: .meter()))
-                    }
+                    distanceMeters = try await self.getDistanceWalkingRunning(date: date, unit: .meter())
 
                 case HKQuantityType(.activeEnergyBurned):
-                    group.addTask {
-                        return (.calories, try await self.getActiveEnergyBurned(date: date))
-                    }
+                    activeCalories = try await self.getActiveEnergyBurned(date: date)
 
                 default:
                     print("Unknown quantity type")
                 }
-            }
-
-            for try await (key, value) in group {
-                switch key {
-                case .steps:
-                    steps = value
-                case .calories:
-                    activeCalories = value
-                case .distance:
-                    distanceMeters = value
-                case .duration:
-                    durationMinutes = value
-                case .heartRate:
-                    averageHeartRate = value
-                }
+            } catch {
+                debugPrint("Error fetching \(quantityType.identifier): \(error.localizedDescription)")
             }
         }
 
@@ -121,5 +97,21 @@ extension HealthKitManager {
             averageHeartRate: averageHeartRate
         )
     }
+    
+    private func getWalkingActivity(date: Date) async -> WalkingActivityData {
+        async let averageHeartRate = try await self.getAverageHeartRate(date: date)
+        async let steps = try self.getStepCount(date: date)
+        async let durationMinutes = try self.getTotalDurationInMinutes(date: date)
+        async let distanceMeters = try self.getDistanceWalkingRunning(date: date, unit: .meter())
+        async let activeCalories = try self.getActiveEnergyBurned(date: date)
 
+        return await WalkingActivityData(
+            date: date,
+            steps: try? steps,
+            activeCalories: try? activeCalories,
+            distanceMeters: try? distanceMeters,
+            durationMinutes: try? durationMinutes,
+            averageHeartRate: try? averageHeartRate
+        )
+    }
 }
