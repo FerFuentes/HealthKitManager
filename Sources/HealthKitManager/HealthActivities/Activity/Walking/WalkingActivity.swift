@@ -14,7 +14,7 @@ public protocol WalkingActivity {
     func getDistanceByWalkingAndRunning(by date: Date, unit: HKUnit) async throws -> Double?
     func getCaloriesBurned(by date: Date) async throws -> Double?
     func getWalkingActivityData(by date: Date) async -> WalkingActivityData
-    func observeWalkingActivityInBackground(by date: Date, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void)
+    func observeWalkingActivityInBackground(completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void)
     func getAverageHeartRate(date: Date) async throws -> Double?
     
 }
@@ -41,8 +41,8 @@ extension WalkingActivity {
         await HealthKitManager.shared.getWalkingActivity(date: date)
     }
     
-    public func observeWalkingActivityInBackground(by date: Date, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {
-        return HealthKitManager.shared.observeWalkingActivityInBackground(date: date, completion: completion)
+    public func observeWalkingActivityInBackground(completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {
+        return HealthKitManager.shared.observeWalkingActivityInBackground(completion: completion)
     }
     
     public func getAverageHeartRate(date: Date) async throws -> Double? {

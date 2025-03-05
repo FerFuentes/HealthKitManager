@@ -28,11 +28,12 @@ extension HealthKitManager {
     }
     
     internal func observeWalkingActivityInBackground(
-        date: Date,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
+        let today = Date()
+        
         let queryDescriptors = forWalkingActivityQuantityType.map {
-            HKQueryDescriptor(sampleType: $0, predicate: self.getPredicate(date: date))
+            HKQueryDescriptor(sampleType: $0, predicate: self.getPredicate(date: today))
         }
         
         let handleSamples: @Sendable (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { [weak self] _, samples, _, newAnchor, error in
@@ -50,7 +51,7 @@ extension HealthKitManager {
             
             Task { 
                 self.walkingActivityQueryAnchor = newAnchor
-                let activity = await self.getWalkingActivity(date: date)
+                let activity = await self.getWalkingActivity(date: Date())
                 completion(.success(activity))
             }
         }
