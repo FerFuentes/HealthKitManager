@@ -7,7 +7,7 @@
 import HealthKit
 
 extension HealthKitManager {
-    func getStepCount(date: Date) async throws -> Int? {
+    func getStepCount(date: Date) async throws -> Double? {
         let type = HKQuantityType(.stepCount)
         _ = try checkAuthorizationStatus(for: type)
         
@@ -23,6 +23,6 @@ extension HealthKitManager {
             return nil
         }
     
-        return Int(stepCount)
+        return stepCount
     }
 }
