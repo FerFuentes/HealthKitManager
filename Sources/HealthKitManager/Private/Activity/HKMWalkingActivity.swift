@@ -38,7 +38,7 @@ extension HealthKitManager {
                 completion(.success(nil))
                 return
             }
-
+            print("Samples: \(updatedSampleTypes.count)")
             Task {
                 let activity = await self.getWalkingActivity(date: date, sampleTypes: updatedSampleTypes)
                 completion(.success(activity))
@@ -145,5 +145,5 @@ extension HealthKitManager {
             averageHeartRate: averageHeartRate
         )
     }
-    
+
 }
