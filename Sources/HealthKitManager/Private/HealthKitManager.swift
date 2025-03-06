@@ -8,7 +8,8 @@ import HealthKit
 class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore = HKHealthStore()
-
+    internal var walkingActivityQuery: HKAnchoredObjectQuery?
+    
     private init() { }
     
     static let shared = HealthKitManager()

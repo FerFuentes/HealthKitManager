@@ -31,44 +31,48 @@ extension HealthKitManager {
         _ start: Bool,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
-        let predicate = getPredicate(date: Date())
-        let queryDescriptors = forWalkingActivityQuantityType.map {
-            HKQueryDescriptor(sampleType: $0, predicate: predicate)
-        }
-        
-        let handleSamples: @Sendable (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { [weak self] _, samples, _, newAnchor, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            
-            guard let samples = samples, !samples.isEmpty else {
-                completion(.success(nil))
-                return
-            }
-            
-            Task { 
-                self.walkingActivityQueryAnchor = newAnchor
-                let activity = await self.getWalkingActivity(date: Date())
-                completion(.success(activity))
-            }
-        }
-        
-        let query = HKAnchoredObjectQuery(
-            queryDescriptors: queryDescriptors,
-            anchor: walkingActivityQueryAnchor,
-            limit: HKObjectQueryNoLimit,
-            resultsHandler: handleSamples
-        )
-        
-        query.updateHandler = handleSamples
-        
         if start {
+            let predicate = getPredicate(date: Date())
+            let queryDescriptors = forWalkingActivityQuantityType.map {
+                HKQueryDescriptor(sampleType: $0, predicate: predicate)
+            }
+
+            let handleSamples: @Sendable (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { [weak self] _, samples, _, newAnchor, error in
+                guard let self = self else { return }
+
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+
+                guard let samples = samples, !samples.isEmpty else {
+                    completion(.success(nil))
+                    return
+                }
+
+                Task { @MainActor in
+                    self.walkingActivityQueryAnchor = newAnchor
+                    let activity = await self.getWalkingActivity(date: Date())
+                    completion(.success(activity))
+                }
+            }
+
+            let query = HKAnchoredObjectQuery(
+                queryDescriptors: queryDescriptors,
+                anchor: walkingActivityQueryAnchor,
+                limit: HKObjectQueryNoLimit,
+                resultsHandler: handleSamples
+            )
+
+            query.updateHandler = handleSamples
             healthStore.execute(query)
+
+            walkingActivityQuery = query
         } else {
-            healthStore.stop(query)
+            if let query = walkingActivityQuery {
+                healthStore.stop(query)
+                walkingActivityQuery = nil
+            }
         }
     }
     
