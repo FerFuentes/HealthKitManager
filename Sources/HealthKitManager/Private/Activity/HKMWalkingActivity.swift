@@ -50,7 +50,7 @@ extension HealthKitManager {
                     return
                 }
 
-                Task { @MainActor in
+                Task { 
                     self.walkingActivityQueryAnchor = newAnchor
                     let activity = await self.getWalkingActivity(date: Date())
                     completion(.success(activity))
