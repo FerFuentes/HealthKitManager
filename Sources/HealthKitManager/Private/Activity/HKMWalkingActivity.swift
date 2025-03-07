@@ -84,7 +84,6 @@ extension HealthKitManager {
             debugPrint("Error requesting authorization: \(error.localizedDescription)")
         }
         
-        // Variables con valores opcionales
         async let heartRateResult: Double? = sampleTypes.contains(HKQuantityType(.heartRate)) ? {
             do { return try await self.getAverageHeartRate(date: date) }
             catch { debugPrint("Error fetching heart rate: \(error.localizedDescription)"); return nil }
@@ -110,7 +109,6 @@ extension HealthKitManager {
             catch { debugPrint("Error fetching active calories: \(error.localizedDescription)"); return nil }
         }() : nil
 
-        // Esperar a que todas las llamadas asíncronas terminen
         return WalkingActivityData(
             date: date,
             steps: await stepsResult,
