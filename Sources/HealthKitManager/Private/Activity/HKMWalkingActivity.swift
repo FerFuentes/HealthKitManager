@@ -29,11 +29,12 @@ extension HealthKitManager {
     
     internal func observeWalkingActivityInBackground(
         _ start: Bool,
+        toRead: Set<HKQuantityType>,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
         if start {
             let predicate = getPredicate(date: Date())
-            let queryDescriptors = forWalkingActivityQuantityType.map {
+            let queryDescriptors = toRead.map {
                 HKQueryDescriptor(sampleType: $0, predicate: predicate)
             }
 
