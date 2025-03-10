@@ -26,6 +26,6 @@ extension HealthActivitiesPermission {
     
     public func enablebackgroundWalkingActivityUpdates(enabled: Bool) async {
         let manager = HealthKitManager.shared
-        return await manager.bacgroundDelivery(enable: enabled, types: manager.forWalkingActivityQuantityType)
+        return await manager.backgroundDeliveryForReadTypes(enable: enabled, types: manager.forWalkingActivityQuantityType)
     }
 }

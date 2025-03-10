@@ -129,7 +129,7 @@ class HealthKitManager: @unchecked Sendable {
         )
     }
     
-    internal func bacgroundDelivery(enable: Bool, types: Set<HKQuantityType>) async {
+    internal func backgroundDeliveryForReadTypes(enable: Bool, types: Set<HKQuantityType>) async {
         do {
             if enable {
                 try await statusForAuthorizationRequest(toWrite: [], toRead: types)
