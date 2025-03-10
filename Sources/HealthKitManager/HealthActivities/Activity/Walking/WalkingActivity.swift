@@ -16,8 +16,6 @@ public protocol WalkingActivity {
     func getWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData
     func observeWalkingActivityInBackground(_ start: Bool, toRead: Set<HKQuantityType>, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void)
     func getAverageHeartRate(date: Date) async throws -> Double?
-    
-    var walkingActivityObserverQuery: HKAnchoredObjectQuery? { get }
 }
 
 extension WalkingActivity {
@@ -45,8 +43,6 @@ extension WalkingActivity {
     public func observeWalkingActivityInBackground(_ start: Bool, toRead: Set<HKQuantityType>, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {
         HealthKitManager.shared.observeWalkingActivityInBackground(start, toRead: toRead, completion: completion)
     }
-    
-    public var walkingActivityObserverQuery: HKAnchoredObjectQuery? { HealthKitManager.shared.walkingActivityQuery }
     
     public func getAverageHeartRate(date: Date) async throws -> Double? {
         try await HealthKitManager.shared.getAverageHeartRate(date: date)

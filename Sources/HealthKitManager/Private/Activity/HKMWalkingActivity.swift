@@ -33,6 +33,10 @@ extension HealthKitManager {
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
         if start {
+            guard (walkingActivityQuery == nil) else {
+                return
+            }
+            
             let predicate = getPredicate(date: Date())
             let queryDescriptors = toRead.map {
                 HKQueryDescriptor(sampleType: $0, predicate: predicate)
