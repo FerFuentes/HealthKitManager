@@ -44,23 +44,21 @@ extension HealthKitManager {
 
             let handleSamples: @Sendable (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { [weak self] _, samples, _, newAnchor, error in
                 guard let self = self else { return }
-
+                
                 if let error = error {
                     completion(.failure(error))
                     return
                 }
-
-                guard let samples = samples, !samples.isEmpty else {
+                
+                guard let samples = samples as? [HKQuantitySample] else {
                     completion(.success(nil))
                     return
                 }
-
-                Task {
-                    self.walkingActivityQueryAnchor = newAnchor
-                    
-                    let activity = await self.getWalkingActivity(date: Date())
-                    completion(.success(activity))
-                }
+                
+                self.walkingActivityQueryAnchor = newAnchor
+                
+                let activity = self.filterWalkingActivitySampleTypes(samples,date: Date())
+                completion(.success(activity))
             }
 
             let query = HKAnchoredObjectQuery(
@@ -80,6 +78,39 @@ extension HealthKitManager {
                 walkingActivityQuery = nil
             }
         }
+    }
+    
+    public func filterWalkingActivitySampleTypes(_ sample: [HKQuantitySample], date: Date)  -> WalkingActivityData {
+
+        let heartRateResult: Double? = sample.first(where: { $0.quantityType == HKQuantityType(.heartRate) })?
+            .quantity.doubleValue(for: HKUnit.count().unitDivided(by: HKUnit.minute()))
+
+        let activeCaloriesResult: Double? = sample.first(where: { $0.quantityType == HKQuantityType(.activeEnergyBurned) })?
+            .quantity.doubleValue(for: HKUnit.kilocalorie())
+
+        let distanceResult: Double? = sample.first(where: { $0.quantityType == HKQuantityType(.distanceWalkingRunning) })?
+            .quantity.doubleValue(for: .meter())
+
+        
+        let stepsResult: Double? = sample.first(where: { $0.quantityType == HKQuantityType(.stepCount) })?
+            .quantity.doubleValue(for: HKUnit.count())
+
+        let durationMinutes: Double? = {
+            let totalDuration = sample
+                .filter { $0.quantityType == HKQuantityType(.stepCount) }
+                .reduce(0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+            
+            return totalDuration / 60.0
+        }()
+
+        return WalkingActivityData(
+            date: date,
+            steps: stepsResult,
+            activeCalories: activeCaloriesResult,
+            distanceMeters: distanceResult,
+            durationMinutes: durationMinutes ?? 0.0,
+            averageHeartRate: heartRateResult
+        )
     }
     
     public func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
