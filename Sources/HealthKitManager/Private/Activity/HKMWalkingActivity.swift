@@ -10,7 +10,12 @@ import HealthKit
 
 extension HealthKitManager {
     
-    internal var walkingActivityQueryAnchor: HKQueryAnchor? {
+    internal func getPredicateForWalkingActivityAnchorQuery() -> NSCompoundPredicate {
+        let excludeManual = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
+        return NSCompoundPredicate(andPredicateWithSubpredicates: [excludeManual])
+    }
+    
+    internal var walkingActivityAnchorQuery: HKQueryAnchor? {
         get {
             if let anchorData = UserDefaults.standard.data(forKey: "walkingActivityAnchor") {
                 return try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: anchorData)
@@ -37,7 +42,7 @@ extension HealthKitManager {
                 return
             }
             
-            let predicate = getPredicate(date: Date())
+            let predicate = getPredicateForWalkingActivityAnchorQuery()
             let queryDescriptors = toRead.map {
                 HKQueryDescriptor(sampleType: $0, predicate: predicate)
             }
@@ -56,7 +61,7 @@ extension HealthKitManager {
                 }
 
                 Task {
-                    self.walkingActivityQueryAnchor = newAnchor
+                    self.walkingActivityAnchorQuery = newAnchor
                     
                     let activity = await self.getWalkingActivity(date: Date())
                     completion(.success(activity))
@@ -65,7 +70,7 @@ extension HealthKitManager {
 
             let query = HKAnchoredObjectQuery(
                 queryDescriptors: queryDescriptors,
-                anchor: walkingActivityQueryAnchor,
+                anchor: walkingActivityAnchorQuery,
                 limit: HKObjectQueryNoLimit,
                 resultsHandler: handleSamples
             )
