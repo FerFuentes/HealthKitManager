@@ -105,8 +105,13 @@ extension HealthKitManager {
                     completion(.failure(error))
                 } else {
                     Task {
-                        let activity = await self.getWalkingActivity(date: Date())
-                        completion(.success(activity))
+                        if let sampleTypes = sampleTypes {
+                            let activity = await self.getWalkingActivity(date: Date(), sampleTypes: sampleTypes)
+                            completion(.success(activity))
+                        } else {
+                            let activity = await self.getWalkingActivity(date: Date())
+                            completion(.success(activity))
+                        }
                     }
                 }
                 
@@ -164,7 +169,7 @@ extension HealthKitManager {
             steps: await stepsResult,
             activeCalories: await activeCaloriesResult,
             distanceMeters: await distanceResult,
-            durationMinutes: await durationResult ?? 0.0,
+            durationMinutes: await durationResult,
             averageHeartRate: await heartRateResult
         )
     }
