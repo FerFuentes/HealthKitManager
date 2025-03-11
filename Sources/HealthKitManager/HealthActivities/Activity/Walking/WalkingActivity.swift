@@ -41,7 +41,7 @@ extension WalkingActivity {
     }
     
     public func observeWalkingActivityInBackground(_ start: Bool, toRead: Set<HKQuantityType>, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {
-        HealthKitManager.shared.observeWalkingActivityInBackground(start, toRead: toRead, completion: completion)
+        HealthKitManager.shared.observeWalkingActivityAnchoredObjectQuery(start, toRead: toRead, completion: completion)
     }
     
     public func getAverageHeartRate(date: Date) async throws -> Double? {

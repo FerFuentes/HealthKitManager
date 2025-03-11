@@ -27,68 +27,68 @@ extension HealthKitManager {
         }
     }
     
-//    internal func observeWalkingActivityInBackground(
-//        _ start: Bool,
-//        toRead: Set<HKQuantityType>,
-//        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
-//    ) {
-//        if start {
-//            guard (walkingActivityQuery == nil) else {
-//                return
-//            }
-//            
-//            let predicate = getPredicate(date: Date())
-//            let queryDescriptors = toRead.map {
-//                HKQueryDescriptor(sampleType: $0, predicate: predicate)
-//            }
-//
-//            let handleSamples: @Sendable (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { [weak self] _, samples, _, newAnchor, error in
-//                guard let self = self else { return }
-//
-//                if let error = error {
-//                    completion(.failure(error))
-//                    return
-//                }
-//
-//                guard let samples = samples, !samples.isEmpty else {
-//                    completion(.success(nil))
-//                    return
-//                }
-//
-//                Task {
-//                    self.walkingActivityQueryAnchor = newAnchor
-//                    
-//                    let activity = await self.getWalkingActivity(date: Date())
-//                    completion(.success(activity))
-//                }
-//            }
-//
-//            let query = HKAnchoredObjectQuery(
-//                queryDescriptors: queryDescriptors,
-//                anchor: walkingActivityQueryAnchor,
-//                limit: HKObjectQueryNoLimit,
-//                resultsHandler: handleSamples
-//            )
-//
-//            query.updateHandler = handleSamples
-//            healthStore.execute(query)
-//
-//            walkingActivityQuery = query
-//        } else {
-//            if let query = walkingActivityQuery {
-//                healthStore.stop(query)
-//                walkingActivityQuery = nil
-//            }
-//        }
-//    }
-    
-    internal func observeWalkingActivityInBackground(
+    internal func observeWalkingActivityAnchoredObjectQuery(
         _ start: Bool,
         toRead: Set<HKQuantityType>,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
         if start {
-            guard (walkingActivityQuery == nil) else {
+            guard (walkingActivityAnchoredQuery == nil) else {
+                return
+            }
+            
+            let predicate = getPredicate(date: Date())
+            let queryDescriptors = toRead.map {
+                HKQueryDescriptor(sampleType: $0, predicate: predicate)
+            }
+
+            let handleSamples: @Sendable (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { [weak self] _, samples, _, newAnchor, error in
+                guard let self = self else { return }
+
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+
+                guard let samples = samples, !samples.isEmpty else {
+                    completion(.success(nil))
+                    return
+                }
+
+                Task {
+                    self.walkingActivityQueryAnchor = newAnchor
+                    
+                    let activity = await self.getWalkingActivity(date: Date())
+                    completion(.success(activity))
+                }
+            }
+
+            let query = HKAnchoredObjectQuery(
+                queryDescriptors: queryDescriptors,
+                anchor: walkingActivityQueryAnchor,
+                limit: HKObjectQueryNoLimit,
+                resultsHandler: handleSamples
+            )
+
+            query.updateHandler = handleSamples
+            healthStore.execute(query)
+            
+            walkingActivityAnchoredQuery = query
+        } else {
+            if let query = walkingActivityAnchoredQuery {
+                healthStore.stop(query)
+                walkingActivityAnchoredQuery = nil
+            }
+        }
+    }
+    
+    internal func observeWalkingActivityObserverQuery(
+        _ start: Bool,
+        toRead: Set<HKQuantityType>,
+        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
+    ) {
+        if start {
+            guard (walkingActivityObserverQuery == nil) else {
                 return
             }
             
@@ -103,7 +103,6 @@ extension HealthKitManager {
                 if let error = error  {
                     debugPrint("Error observing walking activity: \(error)")
                     completion(.failure(error))
-                    completionHandler()
                 } else {
                     Task {
                         let activity = await self.getWalkingActivity(date: Date())
@@ -119,17 +118,14 @@ extension HealthKitManager {
             
             healthStore.execute(query)
 
-            walkingActivityQuery = query
+            walkingActivityObserverQuery = query
         } else {
-            if let query = walkingActivityQuery {
+            if let query = walkingActivityObserverQuery {
                 healthStore.stop(query)
-                walkingActivityQuery = nil
+                walkingActivityObserverQuery = nil
             }
         }
     }
-    
-    
-
     
     public func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
         do {

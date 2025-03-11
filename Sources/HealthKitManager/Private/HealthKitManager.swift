@@ -8,8 +8,8 @@ import HealthKit
 class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore = HKHealthStore()
-//    internal var walkingActivityQuery: HKAnchoredObjectQuery?
-    internal var walkingActivityQuery: HKObserverQuery?
+    internal var walkingActivityAnchoredQuery: HKAnchoredObjectQuery?
+    internal var walkingActivityObserverQuery: HKObserverQuery?
     
     
     private init() { }
