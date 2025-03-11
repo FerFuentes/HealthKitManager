@@ -105,13 +105,8 @@ extension HealthKitManager {
                     completion(.failure(error))
                 } else {
                     Task {
-                        if let sampleTypes = sampleTypes {
-                            let activity = await self.getWalkingActivity(date: Date(), sampleTypes: sampleTypes)
-                            completion(.success(activity))
-                        } else {
-                            let activity = await self.getWalkingActivity(date: Date())
-                            completion(.success(activity))
-                        }
+                        let activity = await self.getWalkingActivity(date: Date())
+                        completion(.success(activity))
                     }
                 }
                 
