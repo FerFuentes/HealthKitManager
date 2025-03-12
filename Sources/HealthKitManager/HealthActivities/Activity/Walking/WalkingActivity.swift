@@ -15,9 +15,7 @@ public protocol WalkingActivity {
     func getCaloriesBurned(by date: Date) async throws -> Double?
     func getWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData
     func getAverageHeartRate(date: Date) async throws -> Double?
-    
     func observeWalkingActivityInBackground(_ start: Bool, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void)
-    var walkingActivityCompletationHandler: HKObserverQueryCompletionHandler? { get  }
 }
 
 extension WalkingActivity {
