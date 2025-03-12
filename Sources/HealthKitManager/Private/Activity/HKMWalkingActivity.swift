@@ -120,6 +120,7 @@ extension HealthKitManager {
         } else {
             if let query = walkingActivityObserverQuery {
                 healthStore.stop(query)
+                walkingActivityCompletionHandler?()
                 walkingActivityObserverQuery = nil
             }
         }
