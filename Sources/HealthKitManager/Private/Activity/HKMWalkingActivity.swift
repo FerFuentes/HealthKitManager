@@ -32,7 +32,7 @@ extension HealthKitManager {
         }
     }
     
-    internal func observeWalkingActivityAnchoredObjectQuery(
+    internal func walkingActivityAnchoredObjectQuery(
         _ start: Bool,
         toRead: Set<HKQuantityType>,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
@@ -87,7 +87,7 @@ extension HealthKitManager {
         }
     }
     
-    internal func observeWalkingActivityObserverQuery(
+    internal func observeWalkingActivityQuery(
         _ start: Bool,
         toRead: Set<HKQuantityType>,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
@@ -97,12 +97,12 @@ extension HealthKitManager {
                 return
             }
             
-            let predicate = getPredicate(date: Date())
+            let predicate = getPredicateForWalkingActivityAnchorQuery()
             let queryDescriptors = toRead.map {
                 HKQueryDescriptor(sampleType: $0, predicate: predicate)
             }
 
-            let updateHandler: @Sendable (HKObserverQuery, Set<HKSampleType>?, @escaping HKObserverQueryCompletionHandler, (any Error)?) -> Void = { [weak self] query, sampleTypes, completionHandler, error in
+            let query = HKObserverQuery(queryDescriptors: queryDescriptors) { [weak self] query, sampleTypes, completionHandler, error in
                 guard let self = self else { return }
                 
                 if let error = error  {
@@ -114,13 +114,9 @@ extension HealthKitManager {
                         completion(.success(activity))
                     }
                 }
-                
+                walkingActivityCompletionHandler = completionHandler
             }
-            
-            let query = HKObserverQuery(
-                queryDescriptors: queryDescriptors,
-                updateHandler: updateHandler)
-            
+
             healthStore.execute(query)
 
             walkingActivityObserverQuery = query

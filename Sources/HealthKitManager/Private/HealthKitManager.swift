@@ -10,7 +10,7 @@ class HealthKitManager: @unchecked Sendable {
     private(set) var healthStore: HKHealthStore = HKHealthStore()
     internal var walkingActivityAnchoredQuery: HKAnchoredObjectQuery?
     internal var walkingActivityObserverQuery: HKObserverQuery?
-    
+    internal var walkingActivityCompletionHandler: HKObserverQueryCompletionHandler?
     
     private init() { }
     
