@@ -136,7 +136,7 @@ class HealthKitManager: @unchecked Sendable {
             if enable {
                 try await statusForAuthorizationRequest(toWrite: [], toRead: types)
                 for type in types {
-                    try await healthStore.enableBackgroundDelivery(for: type, frequency: .daily)
+                    try await healthStore.enableBackgroundDelivery(for: type, frequency: .hourly)
                 }
             } else {
                 for type in types {
