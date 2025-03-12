@@ -89,7 +89,6 @@ extension HealthKitManager {
     
     internal func observeWalkingActivityQuery(
         _ start: Bool,
-        toRead: Set<HKQuantityType>,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
         if start {
@@ -98,24 +97,22 @@ extension HealthKitManager {
             }
             
             let predicate = getPredicateForWalkingActivityAnchorQuery()
-            let queryDescriptors = toRead.map {
-                HKQueryDescriptor(sampleType: $0, predicate: predicate)
-            }
-
-            let query = HKObserverQuery(queryDescriptors: queryDescriptors) { [weak self] query, sampleTypes, completionHandler, error in
-                guard let self = self else { return }
-                
-                if let error = error  {
-                    debugPrint("Error observing walking activity: \(error)")
-                    completion(.failure(error))
-                } else {
-                    Task {
-                        let activity = await self.getWalkingActivity(date: Date())
-                        completion(.success(activity))
+            let query = HKObserverQuery(
+                sampleType: HKQuantityType(.stepCount),
+                predicate: predicate) { [weak self] query, completionHandler, error in
+                    guard let self = self else { return }
+                    
+                    if let error = error  {
+                        debugPrint("Error observing walking activity: \(error)")
+                        completion(.failure(error))
+                    } else {
+                        Task {
+                            let activity = await self.getWalkingActivity(date: Date())
+                            completion(.success(activity))
+                        }
                     }
+                    walkingActivityCompletionHandler = completionHandler
                 }
-                walkingActivityCompletionHandler = completionHandler
-            }
 
             healthStore.execute(query)
 

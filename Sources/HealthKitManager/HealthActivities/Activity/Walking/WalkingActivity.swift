@@ -42,8 +42,8 @@ extension WalkingActivity {
         await HealthKitManager.shared.getWalkingActivity(date: date, sampleTypes: sampleTypes)
     }
     
-    public func observeWalkingActivityInBackground(_ start: Bool, toRead: Set<HKQuantityType>, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {
-        HealthKitManager.shared.observeWalkingActivityQuery(start, toRead: toRead, completion: completion)
+    public func observeWalkingActivityInBackground(_ start: Bool, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {
+        HealthKitManager.shared.observeWalkingActivityQuery(start, completion: completion)
     }
     
     public var walkingActivityCompletationHandler: HKObserverQueryCompletionHandler? {
