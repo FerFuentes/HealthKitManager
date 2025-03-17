@@ -92,7 +92,11 @@ extension HealthKitManager {
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
         if start {
-
+            
+            guard (walkingActivityObserverQuery == nil) else {
+                return
+            }
+            
             let predicate = getPredicateForWalkingActivityAnchorQuery()
             let query = HKObserverQuery(
                 sampleType: HKQuantityType(.stepCount),
@@ -105,6 +109,7 @@ extension HealthKitManager {
                     } else {
                         Task {
                             let activity = await self.getWalkingActivity(date: Date())
+                            clearWalkingActivityObserverQuery()
                             completion(.success(activity))
                         }
                     }
@@ -117,13 +122,17 @@ extension HealthKitManager {
         } else {
             if let query = walkingActivityObserverQuery {
                 healthStore.stop(query)
-                walkingActivityCompletionHandler?()
-                walkingActivityObserverQuery = nil
+                clearWalkingActivityObserverQuery()
             }
         }
     }
     
-    public func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
+    internal func clearWalkingActivityObserverQuery() {
+        walkingActivityCompletionHandler?()
+        walkingActivityObserverQuery = nil
+    }
+    
+    internal func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
         do {
             try await statusForAuthorizationRequest(toWrite: [], toRead: sampleTypes)
         } catch {
