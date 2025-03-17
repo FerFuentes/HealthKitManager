@@ -92,10 +92,7 @@ extension HealthKitManager {
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
         if start {
-            guard (walkingActivityObserverQuery == nil) else {
-                return
-            }
-            
+
             let predicate = getPredicateForWalkingActivityAnchorQuery()
             let query = HKObserverQuery(
                 sampleType: HKQuantityType(.stepCount),
