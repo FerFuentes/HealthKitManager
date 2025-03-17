@@ -45,7 +45,7 @@ extension WalkingActivity {
         HealthKitManager.shared.observeWalkingActivityQuery(start, completion: completion)
     }
     
-    var observeWalkingActivityCompletionHandler: HKObserverQueryCompletionHandler? { HealthKitManager.shared.walkingActivityCompletionHandler }
+    public var observeWalkingActivityCompletionHandler: HKObserverQueryCompletionHandler? { HealthKitManager.shared.walkingActivityCompletionHandler }
     
     public func getAverageHeartRate(date: Date) async throws -> Double? {
         try await HealthKitManager.shared.getAverageHeartRate(date: date)
