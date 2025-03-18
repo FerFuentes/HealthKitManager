@@ -104,12 +104,12 @@ extension HealthKitManager {
                     guard let self = self else { return }
                     
                     if let error = error  {
+                        clearWalkingActivityObserverQuery()
                         debugPrint("Error observing walking activity: \(error)")
                         completion(.failure(error))
                     } else {
                         Task {
                             let activity = await self.getWalkingActivity(date: Date())
-                            clearWalkingActivityObserverQuery()
                             completion(.success(activity))
                         }
                     }
