@@ -5,7 +5,7 @@ import Foundation
 import HealthKit
 
 
-class HealthKitManager: @unchecked Sendable {
+@_spi(Internal) public class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore = HKHealthStore()
     internal var walkingActivityAnchoredQuery: HKAnchoredObjectQuery?
