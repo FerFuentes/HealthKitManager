@@ -11,7 +11,7 @@ public protocol HealthActivitiesPermission {
     func statusForHealthKitAuthorizationRequest(toWrite: Set<HKSampleType>?, toRead: Set<HKObjectType>?) async throws
     func isAuthorizationRequestNeeded(for type: HKObjectType) throws -> Bool
     
-    func enablebackgroundWalkingActivityUpdates(enabled: Bool) async
+    func enablebackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async
 }
 
 extension HealthActivitiesPermission {
@@ -24,8 +24,8 @@ extension HealthActivitiesPermission {
         try await HealthKitManager.shared.statusForAuthorizationRequest(toWrite: toWrite ?? [], toRead: toRead ?? [])
     }
     
-    public func enablebackgroundWalkingActivityUpdates(enabled: Bool) async {
+    public func enablebackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async {
         let manager = HealthKitManager.shared
-        return await manager.backgroundDeliveryForReadTypes(enable: enabled, types: manager.forWalkingActivityQuantityType)
+        return await manager.backgroundDeliveryForReadTypes(enable: enabled, types: toRead ?? manager.forWalkingActivityQuantityType)
     }
 }
