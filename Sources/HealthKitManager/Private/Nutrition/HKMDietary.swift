@@ -6,7 +6,7 @@
 //
 import HealthKit
 
-extension HealthKitManager {
+internal extension HealthKitManager {
     func getWaterIntake(date: Date) async throws -> Double? {
         let type = HKQuantityType(.dietaryWater)
         _ = try checkAuthorizationStatus(for: type)

@@ -8,8 +8,8 @@
 import Foundation
 import HealthKit
 
-extension HealthKitManager {
-    internal func formatWorkout(_ workouts: [HKWorkout]) async throws -> WorkoutData {
+internal extension HealthKitManager {
+    func formatWorkout(_ workouts: [HKWorkout]) async throws -> WorkoutData {
         let deviceType: String = "iOS"
         let dataSource: WorkoutSource = .healthKit
         
@@ -26,7 +26,7 @@ extension HealthKitManager {
         return WorkoutData(deviceType: deviceType, dataSource: dataSource, workouts: formattedWorkouts)
     }
 
-    internal func formatSingleWorkout(_ workout: HKWorkout) async -> Workout? {
+    func formatSingleWorkout(_ workout: HKWorkout) async -> Workout? {
         
         let id = workout.uuid.uuidString
         let type = Workouts.from(activityType: workout.workoutActivityType)
@@ -55,7 +55,7 @@ extension HealthKitManager {
         return formattedWorkout
     }
     
-    internal func formatWorkouMetadata(_ metadata: [String : Any]?) -> Metadata {
+    func formatWorkouMetadata(_ metadata: [String : Any]?) -> Metadata {
         let workoutMetadata = WorkoutMetadata(from: metadata)
         
         return Metadata(
@@ -68,7 +68,7 @@ extension HealthKitManager {
 
     }
     
-    internal func formatAllStatistics(_ workout: HKWorkout) -> Statistics {
+    func formatAllStatistics(_ workout: HKWorkout) -> Statistics {
 
         let distanceMeters = workout
             .statistics(for: HKQuantityType(.distanceWalkingRunning))?

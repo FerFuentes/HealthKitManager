@@ -8,14 +8,14 @@
 import Foundation
 import HealthKit
 
-extension HealthKitManager {
+internal extension HealthKitManager {
     
-    internal func getPredicateForWalkingActivityAnchorQuery() -> NSCompoundPredicate {
+    func getPredicateForWalkingActivityAnchorQuery() -> NSCompoundPredicate {
         let excludeManual = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
         return NSCompoundPredicate(andPredicateWithSubpredicates: [excludeManual])
     }
     
-    internal var walkingActivityAnchorQuery: HKQueryAnchor? {
+    var walkingActivityAnchorQuery: HKQueryAnchor? {
         get {
             if let anchorData = UserDefaults.standard.data(forKey: "walkingActivityAnchor") {
                 return try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: anchorData)
@@ -32,7 +32,7 @@ extension HealthKitManager {
         }
     }
     
-    internal func walkingActivityAnchoredObjectQuery(
+    func walkingActivityAnchoredObjectQuery(
         _ start: Bool,
         toRead: Set<HKQuantityType>,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
@@ -87,7 +87,7 @@ extension HealthKitManager {
         }
     }
     
-    internal func observeWalkingActivityQuery(
+    func observeWalkingActivityQuery(
         _ start: Bool,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
@@ -127,12 +127,12 @@ extension HealthKitManager {
         }
     }
     
-    internal func clearWalkingActivityObserverQuery() {
+    func clearWalkingActivityObserverQuery() {
         walkingActivityCompletionHandler?()
         walkingActivityObserverQuery = nil
     }
     
-    internal func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
+    func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
         do {
             try await statusForAuthorizationRequest(toWrite: [], toRead: sampleTypes)
         } catch {

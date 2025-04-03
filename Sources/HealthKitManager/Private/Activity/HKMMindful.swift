@@ -6,7 +6,7 @@
 //
 import HealthKit
 
-extension HealthKitManager {
+internal extension HealthKitManager {
     private func getPredicateForMindful(date: Date) -> HKSamplePredicate<HKCategorySample> {
         let mindfulSessionSampleType = HKCategoryType(.mindfulSession)
         let calendar = Calendar(identifier: .gregorian)

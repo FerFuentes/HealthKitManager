@@ -8,7 +8,7 @@
 import Foundation
 import HealthKit
 
-extension HealthKitManager {
+internal extension HealthKitManager {
     private func getPredicateForWorkouts(date: Date) ->  HKSamplePredicate<HKWorkout> {
         let calendar = Calendar(identifier: .gregorian)
         let startDate = calendar.startOfDay(for: date)

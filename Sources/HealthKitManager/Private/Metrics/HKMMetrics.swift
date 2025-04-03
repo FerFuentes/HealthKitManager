@@ -6,7 +6,7 @@
 //
 import HealthKit
 
-extension HealthKitManager {
+internal extension HealthKitManager {
     func getHeartRate(date: Date, sampleTypes: Set<HKSampleType>) async -> HeartRateData {
         var restingHeartRate: Double?
         var averageHeartRate: Double?
