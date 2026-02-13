@@ -1,5 +1,5 @@
 //
-//  WalkingActivity.swift
+//  HKMWalkingActivity.swift
 //  HealthKitManager
 //
 //  Created by Fernando Fuentes on 30/01/25.
@@ -87,6 +87,18 @@ internal extension HealthKitManager {
         }
     }
     
+    /// Starts or stops observing walking activity changes using HKObserverQuery.
+    ///
+    /// This method sets up a real-time observer for step count changes. When changes are detected,
+    /// the completion handler is called with updated walking activity data.
+    ///
+    /// - Parameters:
+    ///   - start: `true` to start observing, `false` to stop.
+    ///   - completion: A closure called when walking activity data changes.
+    ///                 Returns `Result<WalkingActivityData?, Error>`.
+    ///
+    /// - Note: Enable background delivery using `enableBackgroundWalkingActivityUpdates(enabled:)`
+    ///         to receive updates when the app is in the background.
     func observeWalkingActivityQuery(
         _ start: Bool,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void

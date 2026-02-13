@@ -1,5 +1,5 @@
 //
-//  DietaryStats.swift
+//  HKMDietary.swift
 //  HealthKitManager
 //
 //  Created by Fernando Fuentes on 25/02/25.
@@ -7,6 +7,70 @@
 import HealthKit
 
 internal extension HealthKitManager {
+    
+    // MARK: - Observer Query for Background Delivery
+    
+    /// Starts or stops observing nutrition data changes using HKObserverQuery.
+    ///
+    /// This method sets up a real-time observer for dietary nutrition changes including calories,
+    /// protein, carbohydrates, and fat. When new nutrition data is recorded, the completion handler
+    /// is called with updated dietary nutrition data.
+    ///
+    /// - Parameters:
+    ///   - start: `true` to start observing, `false` to stop.
+    ///   - completion: A closure called when nutrition data changes.
+    ///                 Returns `Result<DietaryNutritionData?, Error>`.
+    ///
+    /// - Note: Enable background delivery using `enableBackgroundNutritionUpdates(enabled:)`
+    ///         to receive updates when the app is in the background.
+    func observeNutritionQuery(
+        _ start: Bool,
+        completion: @escaping @Sendable (Result<DietaryNutritionData?, Error>) -> Void
+    ) {
+        if start {
+            guard nutritionObserverQuery == nil else {
+                return
+            }
+            
+            let excludeManualPredicate = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
+            let queryDescriptors = forDietaryNutritionQuantityType.map { type in
+                HKQueryDescriptor(sampleType: type, predicate: excludeManualPredicate)
+            }
+            
+            let query = HKObserverQuery(
+                queryDescriptors: queryDescriptors) { [weak self] query, updatedSampleTypes, completionHandler, error in
+                    guard let self = self else { return }
+                    
+                    if let error = error {
+                        clearNutritionObserverQuery()
+                        debugPrint("Error observing nutrition: \(error)")
+                        completion(.failure(error))
+                    } else {
+                        Task {
+                            let nutrition = await self.getDietaryNutrition(date: Date(), sampleTypes: self.forDietaryNutritionQuantityType)
+                            completion(.success(nutrition))
+                        }
+                    }
+                    nutritionCompletionHandler = completionHandler
+                }
+            
+            healthStore.execute(query)
+            nutritionObserverQuery = query
+        } else {
+            if let query = nutritionObserverQuery {
+                healthStore.stop(query)
+                clearNutritionObserverQuery()
+            }
+        }
+    }
+    
+    func clearNutritionObserverQuery() {
+        nutritionCompletionHandler?()
+        nutritionObserverQuery = nil
+    }
+    
+    // MARK: - Data Fetching Methods
+    
     func getWaterIntake(date: Date) async throws -> Double? {
         let type = HKQuantityType(.dietaryWater)
         _ = try checkAuthorizationStatus(for: type)
@@ -52,7 +116,7 @@ internal extension HealthKitManager {
                         .sumQuantity()?
                         .doubleValue(for: HKUnit.kilocalorie())
                 } catch {
-                    debugPrint("Error fetching heart rate: \(error.localizedDescription)")
+                    debugPrint("Error fetching dietary energy: \(error.localizedDescription)")
                 }
                 
             case HKQuantityType(.dietaryFatTotal):
@@ -68,7 +132,7 @@ internal extension HealthKitManager {
                         .sumQuantity()?
                         .doubleValue(for: HKUnit.gram())
                 } catch {
-                    debugPrint("Error fetching heart rate: \(error.localizedDescription)")
+                    debugPrint("Error fetching dietary fat: \(error.localizedDescription)")
                 }
                 
             case HKQuantityType(.dietaryCarbohydrates):
@@ -84,7 +148,7 @@ internal extension HealthKitManager {
                         .sumQuantity()?
                         .doubleValue(for: HKUnit.gram())
                 } catch {
-                    debugPrint("Error fetching heart rate: \(error.localizedDescription)")
+                    debugPrint("Error fetching dietary carbohydrates: \(error.localizedDescription)")
                 }
                 
             case HKQuantityType(.dietaryProtein):
@@ -100,10 +164,10 @@ internal extension HealthKitManager {
                         .sumQuantity()?
                         .doubleValue(for: HKUnit.gram())
                 } catch {
-                    debugPrint("Error fetching heart rate: \(error.localizedDescription)")
+                    debugPrint("Error fetching dietary protein: \(error.localizedDescription)")
                 }
             default:
-                print("Unknown quantity type")
+                debugPrint("Unknown dietary quantity type: \(quantityType)")
             }
         }
         

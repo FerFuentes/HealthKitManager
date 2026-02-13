@@ -1,5 +1,5 @@
 //
-//  HeartRate.swift
+//  HeartRateData.swift
 //  HealthKitManager
 //
 //  Created by Fernando Fuentes on 26/02/25.

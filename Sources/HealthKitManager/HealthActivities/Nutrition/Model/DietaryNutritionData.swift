@@ -1,5 +1,5 @@
 //
-//  NutritionData.swift
+//  DietaryNutritionData.swift
 //  HealthKitManager
 //
 //  Created by Fernando Fuentes on 25/02/25.
