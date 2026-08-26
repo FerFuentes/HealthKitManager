@@ -158,8 +158,9 @@ internal extension HealthKitManager {
                         self.walkingActivityObserverConsecutiveFailures = 0
                     }
                     Task {
-                        await WalkingActivityDeliveryHandler.processDelivery(
-                            read: { try await self.readWalkingActivityMetrics(date: Date(), sampleTypes: self.forWalkingActivityQuantityType) },
+                        await HealthKitDeliveryProcessor.processDelivery(
+                            dates: HealthKitDeliveryProcessor.deliveryDates(endingAt: Date()),
+                            read: { date in try await self.readWalkingActivityMetrics(date: date, sampleTypes: self.forWalkingActivityQuantityType) },
                             report: subscriber,
                             acknowledge: { acknowledgeDelivery() }
                         )

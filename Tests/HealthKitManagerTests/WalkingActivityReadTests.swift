@@ -123,8 +123,9 @@ struct WalkingActivityReadTests {
         let log = DeliveryLog()
         let activity = WalkingActivityData(date: Date(), steps: 100, activeCalories: nil, distanceMeters: nil, durationMinutes: nil, averageHeartRate: nil)
 
-        await WalkingActivityDeliveryHandler.processDelivery(
-            read: {
+        await HealthKitDeliveryProcessor.processDelivery(
+            dates: [Date()],
+            read: { _ in
                 log.append("read")
                 return activity
             },
@@ -142,8 +143,9 @@ struct WalkingActivityReadTests {
     @Test func deliveryIsAcknowledgedAfterFailedProcessing() async {
         let log = DeliveryLog()
 
-        await WalkingActivityDeliveryHandler.processDelivery(
-            read: { throw MetricFailure() },
+        await HealthKitDeliveryProcessor.processDelivery(
+            dates: [Date()],
+            read: { _ -> WalkingActivityData in throw MetricFailure() },
             report: { outcome in
                 if case .failure = outcome {
                     log.append("report-failure")
@@ -153,5 +155,61 @@ struct WalkingActivityReadTests {
         )
 
         #expect(log.all == ["report-failure", "acknowledge"])
+    }
+
+    @Test func deliveryCoversYesterdayThenToday() {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = Date()
+        let dates = HealthKitDeliveryProcessor.deliveryDates(endingAt: now, calendar: calendar)
+
+        #expect(dates.count == 2)
+        #expect(calendar.isDate(dates[0], inSameDayAs: calendar.date(byAdding: .day, value: -1, to: now) ?? now))
+        #expect(dates[1] == now)
+    }
+
+    @Test func deliveryReportsEveryDayBeforeAcknowledging() async {
+        let log = DeliveryLog()
+        let yesterday = Date(timeIntervalSinceReferenceDate: 0)
+        let today = Date(timeIntervalSinceReferenceDate: 86_400)
+
+        await HealthKitDeliveryProcessor.processDelivery(
+            dates: [yesterday, today],
+            read: { date in
+                WalkingActivityData(date: date, steps: date == today ? 200 : 100, activeCalories: nil, distanceMeters: nil, durationMinutes: nil, averageHeartRate: nil)
+            },
+            report: { outcome in
+                if case .success(let data) = outcome, let steps = data?.steps {
+                    log.append("report-\(Int(steps))")
+                }
+            },
+            acknowledge: { log.append("acknowledge") }
+        )
+
+        #expect(log.all == ["report-100", "report-200", "acknowledge"])
+    }
+
+    @Test func deliveryFailureOnOneDayStillReportsTheOtherAndAcknowledges() async {
+        let log = DeliveryLog()
+        let failingDay = Date(timeIntervalSinceReferenceDate: 0)
+        let readableDay = Date(timeIntervalSinceReferenceDate: 86_400)
+
+        await HealthKitDeliveryProcessor.processDelivery(
+            dates: [failingDay, readableDay],
+            read: { date in
+                guard date == readableDay else { throw MetricFailure() }
+                return WalkingActivityData(date: date, steps: 300, activeCalories: nil, distanceMeters: nil, durationMinutes: nil, averageHeartRate: nil)
+            },
+            report: { outcome in
+                switch outcome {
+                case .success:
+                    log.append("report-success")
+                case .failure:
+                    log.append("report-failure")
+                }
+            },
+            acknowledge: { log.append("acknowledge") }
+        )
+
+        #expect(log.all == ["report-failure", "report-success", "acknowledge"])
     }
 }
