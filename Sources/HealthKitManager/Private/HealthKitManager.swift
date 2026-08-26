@@ -60,41 +60,6 @@ internal class HealthKitManager: @unchecked Sendable {
         HKSampleType.workoutType()
     ]
     
-    /// Generic method to observe HealthKit changes using HKObserverQuery with async/await.
-    ///
-    /// This method provides a reusable async/await pattern for observing HealthKit data changes.
-    /// It can be used for custom observation scenarios beyond the built-in observer methods.
-    ///
-    /// - Parameters:
-    ///   - sampleTypes: Set of HKSampleType to observe
-    ///   - predicate: Optional predicate to filter the samples
-    /// - Returns: Set of updated sample types
-    /// - Throws: An error if the observation fails
-    internal func observeHealthKitQuery(sampleTypes: Set<HKSampleType>, predicate: NSPredicate?) async throws -> Set<HKSampleType> {
-        let queryDescriptors: [HKQueryDescriptor] = sampleTypes
-            .map { type in
-                HKQueryDescriptor(sampleType: type, predicate: predicate)
-            }
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            nonisolated(unsafe) var didResume = false
-            let query = HKObserverQuery(queryDescriptors: queryDescriptors) { query, updatedSampleTypes, completionHandler, error in
-                guard !didResume else { return }
-                didResume = true
-                
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: updatedSampleTypes ?? [])
-                }
-                
-                completionHandler()
-            }
-            
-            healthStore.execute(query)
-        }
-    }
-    
     /// Checks the authorization status for a specific HealthKit object type.
     /// - Parameter type: The HealthKit object type to check.
     /// - Returns: `true` if sharing is authorized.
