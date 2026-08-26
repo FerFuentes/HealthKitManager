@@ -33,9 +33,9 @@ extension DietaryNutrition {
         try await HealthKitManager.shared.getWaterIntake(date: date)
     }
     
-    public func getDietaryNutritionData(by date: Date) async -> DietaryNutritionData {
+    public func getDietaryNutritionData(by date: Date) async throws -> DietaryNutritionData {
         let manager = HealthKitManager.shared
-        return await manager.getDietaryNutrition(date: date, sampleTypes: manager.forDietaryNutritionQuantityType)
+        return try await manager.getDietaryNutrition(date: date, sampleTypes: manager.forDietaryNutritionQuantityType)
     }
     
     public func observeNutritionInBackground(_ start: Bool, completion: @escaping @Sendable (Result<DietaryNutritionData?, Error>) -> Void) {

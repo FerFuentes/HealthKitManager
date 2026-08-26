@@ -13,11 +13,11 @@ internal class HealthKitManager: @unchecked Sendable {
     private let backgroundTypesLock = NSLock()
     private var enabledWalkingActivityBackgroundTypes: Set<HKQuantityType>?
     
-    internal var sleepActivityObserverQuery: HKObserverQuery?
-    internal var mindfulActivityObserverQuery: HKObserverQuery?
-    internal var nutritionObserverQuery: HKObserverQuery?
-    internal var heartRateObserverQuery: HKObserverQuery?
-    internal var workoutsObserverQuery: HKObserverQuery?
+    internal let sleepActivityObservation = HealthKitObservationCoordinator<SleepActivityData>()
+    internal let mindfulActivityObservation = HealthKitObservationCoordinator<MindfulActivityData>()
+    internal let nutritionObservation = HealthKitObservationCoordinator<DietaryNutritionData>()
+    internal let heartRateObservation = HealthKitObservationCoordinator<HeartRateData>()
+    internal let workoutsObservation = HealthKitObservationCoordinator<WorkoutData>()
     
     private init() { }
     

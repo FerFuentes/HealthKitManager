@@ -114,18 +114,17 @@ internal extension HealthKitManager {
         _ start: Bool,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
-        if start {
-            walkingActivityObservation.startObserving(
-                subscriber: completion,
-                register: { [weak self] in self?.executeWalkingActivityObserverQuery() },
-                halt: { [weak self] query in
-                    guard let self, let query = query as? HKObserverQuery else { return }
-                    self.healthStore.stop(query)
-                }
-            )
-        } else {
-            walkingActivityObservation.stopObserving()
-        }
+        observeQuery(
+            start,
+            coordinator: walkingActivityObservation,
+            descriptors: { [weak self] in self?.walkingActivityObserverDescriptors() ?? [] },
+            deliveryDates: { HealthKitDeliveryProcessor.deliveryDates(endingAt: Date()) },
+            read: { [weak self] date in
+                guard let self else { throw Permission.Error.unavailable }
+                return try await self.readWalkingActivityMetrics(date: date, sampleTypes: self.walkingActivityBackgroundSampleTypes)
+            },
+            completion: completion
+        )
     }
 
     /// The query descriptors the walking observer registers: one per metric type currently
@@ -136,47 +135,6 @@ internal extension HealthKitManager {
         return walkingActivityBackgroundTypes.map {
             HKQueryDescriptor(sampleType: $0, predicate: predicate)
         }
-    }
-
-    /// Registers the observer query whose handler acknowledges the current delivery on every path.
-    private func executeWalkingActivityObserverQuery() -> HKObserverQuery {
-        let query = HKObserverQuery(
-            queryDescriptors: walkingActivityObserverDescriptors()) { [weak self] query, _, deliveryCompletionHandler, error in
-                nonisolated(unsafe) let acknowledgeDelivery = deliveryCompletionHandler
-
-                guard let self = self else {
-                    acknowledgeDelivery()
-                    return
-                }
-
-                if let error = error {
-                    switch self.walkingActivityObservation.handling(forFailedDeliveryFrom: query, error: error) {
-                    case .retrySilently:
-                        acknowledgeDelivery()
-                    case .reportTerminal(let terminal, let subscriber):
-                        acknowledgeDelivery()
-                        subscriber(.failure(terminal))
-                    }
-                    return
-                }
-
-                switch self.walkingActivityObservation.handling(forDeliveryFrom: query) {
-                case .ignore:
-                    acknowledgeDelivery()
-                case .process(let subscriber):
-                    Task {
-                        await HealthKitDeliveryProcessor.processDelivery(
-                            dates: HealthKitDeliveryProcessor.deliveryDates(endingAt: Date()),
-                            read: { date in try await self.readWalkingActivityMetrics(date: date, sampleTypes: self.walkingActivityBackgroundSampleTypes) },
-                            report: subscriber,
-                            acknowledge: { acknowledgeDelivery() }
-                        )
-                    }
-                }
-            }
-
-        healthStore.execute(query)
-        return query
     }
 
     /// Reads walking activity for a date, requiring authorization to be established

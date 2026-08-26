@@ -14,7 +14,7 @@ public protocol Metrics {
     /// Gets heart rate metrics for a specific date.
     /// - Parameter date: The date to query.
     /// - Returns: A `HeartRateData` object with average and resting heart rate.
-    func getHeartRateMetrics(by date: Date) async -> HeartRateData
+    func getHeartRateMetrics(by date: Date) async throws -> HeartRateData
     
     /// Gets body metrics (height, weight) for a specific date.
     /// - Parameter date: The date to query.
@@ -29,9 +29,9 @@ public protocol Metrics {
 }
 
 extension Metrics {
-    public func getHeartRateMetrics(by date: Date) async -> HeartRateData {
+    public func getHeartRateMetrics(by date: Date) async throws -> HeartRateData {
         let manager = HealthKitManager.shared
-        return await manager.getHeartRate(date: date, sampleTypes: manager.forHeartRateQuantityType)
+        return try await manager.getHeartRate(date: date, sampleTypes: manager.forHeartRateQuantityType)
     }
     
     public func getBodyMetrics(by date: Date) async -> BodyData {

@@ -28,50 +28,16 @@ internal extension HealthKitManager {
         _ start: Bool,
         completion: @escaping @Sendable (Result<WorkoutData?, Error>) -> Void
     ) {
-        if start {
-            guard workoutsObserverQuery == nil else {
-                return
-            }
-            
-            let workoutType = HKSampleType.workoutType()
-            let query = HKObserverQuery(
-                sampleType: workoutType,
-                predicate: nil) { [weak self] _, completionHandler, error in
-                    nonisolated(unsafe) let acknowledgeDelivery = completionHandler
-
-                    guard let self = self else {
-                        acknowledgeDelivery()
-                        return
-                    }
-
-                    if let error = error {
-                        acknowledgeDelivery()
-                        self.stopWorkoutsObserver()
-                        completion(.failure(error))
-                    } else {
-                        Task {
-                            await HealthKitDeliveryProcessor.processDelivery(
-                                dates: [Date()],
-                                read: { date in try await self.getAllWorkouts(date: date) },
-                                report: completion,
-                                acknowledge: { acknowledgeDelivery() }
-                            )
-                        }
-                    }
-                }
-            
-            healthStore.execute(query)
-            workoutsObserverQuery = query
-        } else {
-            stopWorkoutsObserver()
-        }
-    }
-    
-    /// Stops and releases the active workouts observer query.
-    func stopWorkoutsObserver() {
-        guard let query = workoutsObserverQuery else { return }
-        healthStore.stop(query)
-        workoutsObserverQuery = nil
+        observeQuery(
+            start,
+            coordinator: workoutsObservation,
+            descriptors: { [HKQueryDescriptor(sampleType: HKSampleType.workoutType(), predicate: nil)] },
+            read: { [weak self] date in
+                guard let self else { throw Permission.Error.unavailable }
+                return try await self.getAllWorkouts(date: date)
+            },
+            completion: completion
+        )
     }
     
     // MARK: - Predicates and Descriptors
