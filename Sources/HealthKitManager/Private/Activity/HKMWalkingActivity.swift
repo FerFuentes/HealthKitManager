@@ -95,7 +95,8 @@ internal extension HealthKitManager {
     ///
     /// Every background delivery is acknowledged after its processing finishes, on success
     /// and failure alike, so iOS never counts a delivery as missed and keeps waking the app.
-    /// A failing observer query is stopped and re-registered instead of going dark.
+    /// A failing observer query is re-registered with a bounded exponential backoff instead
+    /// of going dark or spinning a hot register/error loop.
     ///
     /// - Parameters:
     ///   - start: `true` to start observing, `false` to stop.
@@ -108,20 +109,22 @@ internal extension HealthKitManager {
         _ start: Bool,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
-        if start {
-            guard (walkingActivityObserverQuery == nil) else {
-                return
+        walkingActivityObserverLock.withLock {
+            if start {
+                guard walkingActivitySubscriber == nil else { return }
+                walkingActivitySubscriber = completion
+                walkingActivityObserverConsecutiveFailures = 0
+                registerWalkingActivityObserver()
+            } else {
+                walkingActivitySubscriber = nil
+                haltWalkingActivityObserver()
             }
-            startWalkingActivityObserver(completion: completion)
-        } else {
-            stopWalkingActivityObserver()
         }
     }
 
-    /// Registers the observer query whose handler acknowledges the current delivery on every path.
-    private func startWalkingActivityObserver(
-        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
-    ) {
+    /// Registers the observer query whose handler acknowledges the current delivery on
+    /// every path. Callers must hold `walkingActivityObserverLock`.
+    private func registerWalkingActivityObserver() {
         let predicate = getPredicateForWalkingActivityAnchorQuery()
         let query = HKObserverQuery(
             sampleType: HKQuantityType(.stepCount),
@@ -133,15 +136,23 @@ internal extension HealthKitManager {
                     return
                 }
 
+                guard let subscriber = self.walkingActivityObserverLock.withLock({ self.walkingActivitySubscriber }) else {
+                    acknowledgeDelivery()
+                    return
+                }
+
                 if let error = error {
                     acknowledgeDelivery()
-                    self.restartWalkingActivityObserver(completion: completion)
-                    completion(.failure(error))
+                    self.scheduleWalkingActivityObserverRestart()
+                    subscriber(.failure(error))
                 } else {
+                    self.walkingActivityObserverLock.withLock {
+                        self.walkingActivityObserverConsecutiveFailures = 0
+                    }
                     Task {
                         await WalkingActivityDeliveryHandler.processDelivery(
                             read: { try await self.readWalkingActivityMetrics(date: Date(), sampleTypes: self.forWalkingActivityQuantityType) },
-                            report: completion,
+                            report: subscriber,
                             acknowledge: { acknowledgeDelivery() }
                         )
                     }
@@ -152,18 +163,32 @@ internal extension HealthKitManager {
         walkingActivityObserverQuery = query
     }
 
-    private func stopWalkingActivityObserver() {
+    /// Stops and releases the active observer query. Callers must hold `walkingActivityObserverLock`.
+    private func haltWalkingActivityObserver() {
         guard let query = walkingActivityObserverQuery else { return }
         healthStore.stop(query)
         walkingActivityObserverQuery = nil
     }
 
-    /// Replaces a failed observer query with a fresh registration so observation keeps running.
-    private func restartWalkingActivityObserver(
-        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
-    ) {
-        stopWalkingActivityObserver()
-        startWalkingActivityObserver(completion: completion)
+    /// Stops the failed observer and re-registers it after a bounded backoff, giving up
+    /// once the retry policy is exhausted, and never re-registering after the subscriber
+    /// stopped observing.
+    private func scheduleWalkingActivityObserverRestart() {
+        let restartDelay: Duration? = walkingActivityObserverLock.withLock {
+            haltWalkingActivityObserver()
+            walkingActivityObserverConsecutiveFailures += 1
+            return WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: walkingActivityObserverConsecutiveFailures)
+        }
+
+        guard let restartDelay else { return }
+
+        Task {
+            try? await Task.sleep(for: restartDelay)
+            walkingActivityObserverLock.withLock {
+                guard walkingActivitySubscriber != nil, walkingActivityObserverQuery == nil else { return }
+                registerWalkingActivityObserver()
+            }
+        }
     }
 
     /// Reads walking activity for a date, requesting authorization first and

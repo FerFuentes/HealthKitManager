@@ -9,7 +9,10 @@ internal class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore = HKHealthStore()
     internal var walkingActivityAnchoredQuery: HKAnchoredObjectQuery?
+    internal let walkingActivityObserverLock = NSLock()
     internal var walkingActivityObserverQuery: HKObserverQuery?
+    internal var walkingActivitySubscriber: (@Sendable (Result<WalkingActivityData?, Error>) -> Void)?
+    internal var walkingActivityObserverConsecutiveFailures = 0
     
     // Sleep Activity observer properties
     internal var sleepActivityObserverQuery: HKObserverQuery?
