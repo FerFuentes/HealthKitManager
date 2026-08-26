@@ -7,22 +7,24 @@
 import HealthKit
 
 internal extension HealthKitManager {
-    func getTotalDurationInMinutes(date: Date) async throws -> Double {
+
+    /// Total minutes covered by the day's step samples with overlapping device
+    /// recordings merged, or `nil` when the day has no samples at all.
+    ///
+    /// - Parameter date: The day to query.
+    /// - Returns: Active walking minutes, or `nil` for a sample-less day.
+    /// - Throws: A `Permission.Error` or `HKError` when the samples cannot be read.
+    func getTotalDurationInMinutes(date: Date) async throws -> Double? {
         let type = HKQuantityType(.stepCount)
         _ = try checkAuthorizationStatus(for: type)
-        
-        var totalDuration: Double = 0.0
-        let predicate = getPredicate(date: date)
-        
-        let totalDurationDescriptor = HKSampleQueryDescriptor(
-            predicates: [.quantitySample(type: type, predicate: predicate)],
-            sortDescriptors: [SortDescriptor(\.endDate, order: .reverse)]
+
+        let stepSamples = try await HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: type, predicate: getPredicate(date: date))],
+            sortDescriptors: []
+        ).result(for: healthStore)
+
+        return StepsDurationAggregator.totalMinutes(
+            coveredBy: stepSamples.map { DateInterval(start: $0.startDate, end: $0.endDate) }
         )
-        
-        let stepSamples = try await totalDurationDescriptor.result(for: healthStore)
-        totalDuration += stepSamples
-            .reduce(0) { $0 + $1.endDate.timeIntervalSince($1.startDate) } / 60.0
-    
-        return Double(String(format: "%.2f", totalDuration)) ?? 0.0
     }
 }

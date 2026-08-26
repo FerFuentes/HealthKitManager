@@ -18,10 +18,11 @@ public protocol WalkingActivity {
     /// - Returns: The total step count, or `nil` if unavailable.
     func getStepsCount(by date: Date) async throws -> Double?
     
-    /// Gets the total active walking minutes for a specific date.
+    /// Gets the total active walking minutes for a specific date, with overlapping
+    /// device recordings merged so concurrent iPhone and Watch samples count once.
     /// - Parameter date: The date to query.
-    /// - Returns: Total active minutes.
-    func getTotalActiveMinutesWalking(by date: Date) async throws -> Double
+    /// - Returns: Total active minutes, or `nil` when the day has no step samples.
+    func getTotalActiveMinutesWalking(by date: Date) async throws -> Double?
     
     /// Gets the walking and running distance for a specific date.
     /// - Parameters:
@@ -81,7 +82,7 @@ extension WalkingActivity {
         try await HealthKitManager.shared.getStepCount(date: date)
     }
     
-    public func getTotalActiveMinutesWalking(by date: Date) async throws -> Double {
+    public func getTotalActiveMinutesWalking(by date: Date) async throws -> Double? {
         try await HealthKitManager.shared.getTotalDurationInMinutes(date: date)
     }
     
