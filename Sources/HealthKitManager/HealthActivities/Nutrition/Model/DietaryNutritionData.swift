@@ -6,7 +6,7 @@
 //
 import Foundation
 
-public struct DietaryNutritionData: Codable {
+public struct DietaryNutritionData: Sendable, Codable {
     public let caloriesKcal: Double?
     public let carbohydratesGrams: Double?
     public let proteinGrams: Double?

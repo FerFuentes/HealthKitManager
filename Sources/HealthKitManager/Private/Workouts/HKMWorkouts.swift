@@ -36,38 +36,41 @@ internal extension HealthKitManager {
             let workoutType = HKSampleType.workoutType()
             let query = HKObserverQuery(
                 sampleType: workoutType,
-                predicate: nil) { [weak self] query, completionHandler, error in
-                    guard let self = self else { return }
-                    
+                predicate: nil) { [weak self] _, completionHandler, error in
+                    nonisolated(unsafe) let acknowledgeDelivery = completionHandler
+
+                    guard let self = self else {
+                        acknowledgeDelivery()
+                        return
+                    }
+
                     if let error = error {
-                        clearWorkoutsObserverQuery()
-                        debugPrint("Error observing workouts: \(error)")
+                        acknowledgeDelivery()
+                        self.stopWorkoutsObserver()
                         completion(.failure(error))
                     } else {
                         Task {
-                            do {
-                                let workouts = try await self.getAllWorkouts(date: Date())
-                                completion(.success(workouts))
-                            } catch {
-                                completion(.failure(error))
-                            }
+                            await HealthKitDeliveryProcessor.processDelivery(
+                                dates: [Date()],
+                                read: { date in try await self.getAllWorkouts(date: date) },
+                                report: completion,
+                                acknowledge: { acknowledgeDelivery() }
+                            )
                         }
                     }
-                    workoutsCompletionHandler = completionHandler
                 }
             
             healthStore.execute(query)
             workoutsObserverQuery = query
         } else {
-            if let query = workoutsObserverQuery {
-                healthStore.stop(query)
-                clearWorkoutsObserverQuery()
-            }
+            stopWorkoutsObserver()
         }
     }
     
-    func clearWorkoutsObserverQuery() {
-        workoutsCompletionHandler?()
+    /// Stops and releases the active workouts observer query.
+    func stopWorkoutsObserver() {
+        guard let query = workoutsObserverQuery else { return }
+        healthStore.stop(query)
         workoutsObserverQuery = nil
     }
     

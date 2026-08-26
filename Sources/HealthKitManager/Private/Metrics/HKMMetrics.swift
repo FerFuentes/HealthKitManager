@@ -38,34 +38,41 @@ internal extension HealthKitManager {
             }
             
             let query = HKObserverQuery(
-                queryDescriptors: queryDescriptors) { [weak self] query, updatedSampleTypes, completionHandler, error in
-                    guard let self = self else { return }
-                    
+                queryDescriptors: queryDescriptors) { [weak self] _, _, completionHandler, error in
+                    nonisolated(unsafe) let acknowledgeDelivery = completionHandler
+
+                    guard let self = self else {
+                        acknowledgeDelivery()
+                        return
+                    }
+
                     if let error = error {
-                        clearHeartRateObserverQuery()
-                        debugPrint("Error observing heart rate: \(error)")
+                        acknowledgeDelivery()
+                        self.stopHeartRateObserver()
                         completion(.failure(error))
                     } else {
                         Task {
-                            let heartRate = await self.getHeartRate(date: Date(), sampleTypes: self.forHeartRateQuantityType)
-                            completion(.success(heartRate))
+                            await HealthKitDeliveryProcessor.processDelivery(
+                                dates: [Date()],
+                                read: { date in await self.getHeartRate(date: date, sampleTypes: self.forHeartRateQuantityType) },
+                                report: completion,
+                                acknowledge: { acknowledgeDelivery() }
+                            )
                         }
                     }
-                    heartRateCompletionHandler = completionHandler
                 }
             
             healthStore.execute(query)
             heartRateObserverQuery = query
         } else {
-            if let query = heartRateObserverQuery {
-                healthStore.stop(query)
-                clearHeartRateObserverQuery()
-            }
+            stopHeartRateObserver()
         }
     }
     
-    func clearHeartRateObserverQuery() {
-        heartRateCompletionHandler?()
+    /// Stops and releases the active heart rate observer query.
+    func stopHeartRateObserver() {
+        guard let query = heartRateObserverQuery else { return }
+        healthStore.stop(query)
         heartRateObserverQuery = nil
     }
     

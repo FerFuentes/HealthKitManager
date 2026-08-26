@@ -34,38 +34,41 @@ internal extension HealthKitManager {
             let mindfulType = HKCategoryType(.mindfulSession)
             let query = HKObserverQuery(
                 sampleType: mindfulType,
-                predicate: nil) { [weak self] query, completionHandler, error in
-                    guard let self = self else { return }
-                    
+                predicate: nil) { [weak self] _, completionHandler, error in
+                    nonisolated(unsafe) let acknowledgeDelivery = completionHandler
+
+                    guard let self = self else {
+                        acknowledgeDelivery()
+                        return
+                    }
+
                     if let error = error {
-                        clearMindfulActivityObserverQuery()
-                        debugPrint("Error observing mindful activity: \(error)")
+                        acknowledgeDelivery()
+                        self.stopMindfulActivityObserver()
                         completion(.failure(error))
                     } else {
                         Task {
-                            do {
-                                let activity = try await self.getMindfulActivity(date: Date())
-                                completion(.success(activity))
-                            } catch {
-                                completion(.failure(error))
-                            }
+                            await HealthKitDeliveryProcessor.processDelivery(
+                                dates: [Date()],
+                                read: { date in try await self.getMindfulActivity(date: date) },
+                                report: completion,
+                                acknowledge: { acknowledgeDelivery() }
+                            )
                         }
                     }
-                    mindfulActivityCompletionHandler = completionHandler
                 }
             
             healthStore.execute(query)
             mindfulActivityObserverQuery = query
         } else {
-            if let query = mindfulActivityObserverQuery {
-                healthStore.stop(query)
-                clearMindfulActivityObserverQuery()
-            }
+            stopMindfulActivityObserver()
         }
     }
     
-    func clearMindfulActivityObserverQuery() {
-        mindfulActivityCompletionHandler?()
+    /// Stops and releases the active mindful observer query.
+    func stopMindfulActivityObserver() {
+        guard let query = mindfulActivityObserverQuery else { return }
+        healthStore.stop(query)
         mindfulActivityObserverQuery = nil
     }
     

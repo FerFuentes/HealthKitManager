@@ -34,38 +34,41 @@ internal extension HealthKitManager {
             let sleepType = HKCategoryType(.sleepAnalysis)
             let query = HKObserverQuery(
                 sampleType: sleepType,
-                predicate: nil) { [weak self] query, completionHandler, error in
-                    guard let self = self else { return }
-                    
+                predicate: nil) { [weak self] _, completionHandler, error in
+                    nonisolated(unsafe) let acknowledgeDelivery = completionHandler
+
+                    guard let self = self else {
+                        acknowledgeDelivery()
+                        return
+                    }
+
                     if let error = error {
-                        clearSleepActivityObserverQuery()
-                        debugPrint("Error observing sleep activity: \(error)")
+                        acknowledgeDelivery()
+                        self.stopSleepActivityObserver()
                         completion(.failure(error))
                     } else {
                         Task {
-                            do {
-                                let activity = try await self.getSleepActivity(date: Date())
-                                completion(.success(activity))
-                            } catch {
-                                completion(.failure(error))
-                            }
+                            await HealthKitDeliveryProcessor.processDelivery(
+                                dates: [Date()],
+                                read: { date in try await self.getSleepActivity(date: date) },
+                                report: completion,
+                                acknowledge: { acknowledgeDelivery() }
+                            )
                         }
                     }
-                    sleepActivityCompletionHandler = completionHandler
                 }
             
             healthStore.execute(query)
             sleepActivityObserverQuery = query
         } else {
-            if let query = sleepActivityObserverQuery {
-                healthStore.stop(query)
-                clearSleepActivityObserverQuery()
-            }
+            stopSleepActivityObserver()
         }
     }
     
-    func clearSleepActivityObserverQuery() {
-        sleepActivityCompletionHandler?()
+    /// Stops and releases the active sleep observer query.
+    func stopSleepActivityObserver() {
+        guard let query = sleepActivityObserverQuery else { return }
+        healthStore.stop(query)
         sleepActivityObserverQuery = nil
     }
     

@@ -14,25 +14,11 @@ internal class HealthKitManager: @unchecked Sendable {
     internal var walkingActivitySubscriber: (@Sendable (Result<WalkingActivityData?, Error>) -> Void)?
     internal var walkingActivityObserverConsecutiveFailures = 0
     
-    // Sleep Activity observer properties
     internal var sleepActivityObserverQuery: HKObserverQuery?
-    internal var sleepActivityCompletionHandler: HKObserverQueryCompletionHandler?
-    
-    // Mindful Activity observer properties
     internal var mindfulActivityObserverQuery: HKObserverQuery?
-    internal var mindfulActivityCompletionHandler: HKObserverQueryCompletionHandler?
-    
-    // Nutrition observer properties
     internal var nutritionObserverQuery: HKObserverQuery?
-    internal var nutritionCompletionHandler: HKObserverQueryCompletionHandler?
-    
-    // Metrics (Heart Rate) observer properties
     internal var heartRateObserverQuery: HKObserverQuery?
-    internal var heartRateCompletionHandler: HKObserverQueryCompletionHandler?
-    
-    // Workouts observer properties
     internal var workoutsObserverQuery: HKObserverQuery?
-    internal var workoutsCompletionHandler: HKObserverQueryCompletionHandler?
     
     private init() { }
     

@@ -38,34 +38,41 @@ internal extension HealthKitManager {
             }
             
             let query = HKObserverQuery(
-                queryDescriptors: queryDescriptors) { [weak self] query, updatedSampleTypes, completionHandler, error in
-                    guard let self = self else { return }
-                    
+                queryDescriptors: queryDescriptors) { [weak self] _, _, completionHandler, error in
+                    nonisolated(unsafe) let acknowledgeDelivery = completionHandler
+
+                    guard let self = self else {
+                        acknowledgeDelivery()
+                        return
+                    }
+
                     if let error = error {
-                        clearNutritionObserverQuery()
-                        debugPrint("Error observing nutrition: \(error)")
+                        acknowledgeDelivery()
+                        self.stopNutritionObserver()
                         completion(.failure(error))
                     } else {
                         Task {
-                            let nutrition = await self.getDietaryNutrition(date: Date(), sampleTypes: self.forDietaryNutritionQuantityType)
-                            completion(.success(nutrition))
+                            await HealthKitDeliveryProcessor.processDelivery(
+                                dates: [Date()],
+                                read: { date in await self.getDietaryNutrition(date: date, sampleTypes: self.forDietaryNutritionQuantityType) },
+                                report: completion,
+                                acknowledge: { acknowledgeDelivery() }
+                            )
                         }
                     }
-                    nutritionCompletionHandler = completionHandler
                 }
             
             healthStore.execute(query)
             nutritionObserverQuery = query
         } else {
-            if let query = nutritionObserverQuery {
-                healthStore.stop(query)
-                clearNutritionObserverQuery()
-            }
+            stopNutritionObserver()
         }
     }
     
-    func clearNutritionObserverQuery() {
-        nutritionCompletionHandler?()
+    /// Stops and releases the active nutrition observer query.
+    func stopNutritionObserver() {
+        guard let query = nutritionObserverQuery else { return }
+        healthStore.stop(query)
         nutritionObserverQuery = nil
     }
     

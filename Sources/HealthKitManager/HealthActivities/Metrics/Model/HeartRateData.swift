@@ -6,7 +6,7 @@
 //
 import Foundation
 
-public struct HeartRateData: Codable {
+public struct HeartRateData: Sendable, Codable {
     public let restingHeartRate: Double?
     public let averageHeartRate: Double?
 }
