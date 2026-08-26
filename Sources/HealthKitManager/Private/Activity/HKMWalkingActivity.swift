@@ -9,12 +9,12 @@ import Foundation
 import HealthKit
 
 internal extension HealthKitManager {
-    
+
     func getPredicateForWalkingActivityAnchorQuery() -> NSCompoundPredicate {
         let excludeManual = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
         return NSCompoundPredicate(andPredicateWithSubpredicates: [excludeManual])
     }
-    
+
     var walkingActivityAnchorQuery: HKQueryAnchor? {
         get {
             if let anchorData = UserDefaults.standard.data(forKey: "walkingActivityAnchor") {
@@ -31,7 +31,7 @@ internal extension HealthKitManager {
             }
         }
     }
-    
+
     func walkingActivityAnchoredObjectQuery(
         _ start: Bool,
         toRead: Set<HKQuantityType>,
@@ -41,7 +41,7 @@ internal extension HealthKitManager {
             guard (walkingActivityAnchoredQuery == nil) else {
                 return
             }
-            
+
             let predicate = getPredicateForWalkingActivityAnchorQuery()
             let queryDescriptors = toRead.map {
                 HKQueryDescriptor(sampleType: $0, predicate: predicate)
@@ -62,9 +62,13 @@ internal extension HealthKitManager {
 
                 Task {
                     self.walkingActivityAnchorQuery = newAnchor
-                    
-                    let activity = await self.getWalkingActivity(date: Date())
-                    completion(.success(activity))
+
+                    do {
+                        let activity = try await self.readWalkingActivityMetrics(date: Date(), sampleTypes: self.forWalkingActivityQuantityType)
+                        completion(.success(activity))
+                    } catch {
+                        completion(.failure(error))
+                    }
                 }
             }
 
@@ -77,7 +81,7 @@ internal extension HealthKitManager {
 
             query.updateHandler = handleSamples
             healthStore.execute(query)
-            
+
             walkingActivityAnchoredQuery = query
         } else {
             if let query = walkingActivityAnchoredQuery {
@@ -86,11 +90,12 @@ internal extension HealthKitManager {
             }
         }
     }
-    
+
     /// Starts or stops observing walking activity changes using HKObserverQuery.
     ///
-    /// This method sets up a real-time observer for step count changes. When changes are detected,
-    /// the completion handler is called with updated walking activity data.
+    /// Every background delivery is acknowledged after its processing finishes, on success
+    /// and failure alike, so iOS never counts a delivery as missed and keeps waking the app.
+    /// A failing observer query is stopped and re-registered instead of going dark.
     ///
     /// - Parameters:
     ///   - start: `true` to start observing, `false` to stop.
@@ -104,102 +109,122 @@ internal extension HealthKitManager {
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
         if start {
-            
             guard (walkingActivityObserverQuery == nil) else {
                 return
             }
-            
-            let predicate = getPredicateForWalkingActivityAnchorQuery()
-            let query = HKObserverQuery(
-                sampleType: HKQuantityType(.stepCount),
-                predicate: predicate) { [weak self] query, completionHandler, error in
-                    guard let self = self else { return }
-                    
-                    if let error = error  {
-                        clearWalkingActivityObserverQuery()
-                        debugPrint("Error observing walking activity: \(error)")
-                        completion(.failure(error))
-                    } else {
-                        Task {
-                            let activity = await self.getWalkingActivity(date: Date())
-                            completion(.success(activity))
-                        }
-                    }
-                    walkingActivityCompletionHandler = completionHandler
+            startWalkingActivityObserver(completion: completion)
+        } else {
+            stopWalkingActivityObserver()
+        }
+    }
+
+    /// Registers the observer query whose handler acknowledges the current delivery on every path.
+    private func startWalkingActivityObserver(
+        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
+    ) {
+        let predicate = getPredicateForWalkingActivityAnchorQuery()
+        let query = HKObserverQuery(
+            sampleType: HKQuantityType(.stepCount),
+            predicate: predicate) { [weak self] _, deliveryCompletionHandler, error in
+                nonisolated(unsafe) let acknowledgeDelivery = deliveryCompletionHandler
+
+                guard let self = self else {
+                    acknowledgeDelivery()
+                    return
                 }
 
-            healthStore.execute(query)
-
-            walkingActivityObserverQuery = query
-        } else {
-            if let query = walkingActivityObserverQuery {
-                healthStore.stop(query)
-                clearWalkingActivityObserverQuery()
+                if let error = error {
+                    acknowledgeDelivery()
+                    self.restartWalkingActivityObserver(completion: completion)
+                    completion(.failure(error))
+                } else {
+                    Task {
+                        await WalkingActivityDeliveryHandler.processDelivery(
+                            read: { try await self.readWalkingActivityMetrics(date: Date(), sampleTypes: self.forWalkingActivityQuantityType) },
+                            report: completion,
+                            acknowledge: { acknowledgeDelivery() }
+                        )
+                    }
+                }
             }
-        }
+
+        healthStore.execute(query)
+        walkingActivityObserverQuery = query
     }
-    
-    func clearWalkingActivityObserverQuery() {
-        walkingActivityCompletionHandler?()
+
+    private func stopWalkingActivityObserver() {
+        guard let query = walkingActivityObserverQuery else { return }
+        healthStore.stop(query)
         walkingActivityObserverQuery = nil
     }
-    
-    func getWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
-        do {
-            try await statusForAuthorizationRequest(toWrite: [], toRead: sampleTypes)
-        } catch {
-            debugPrint("Error requesting authorization: \(error.localizedDescription)")
-        }
-        
-        async let heartRateResult: Double? = sampleTypes.contains(HKQuantityType(.heartRate)) ? {
-            do { return try await self.getAverageHeartRate(date: date) }
-            catch { debugPrint("Error fetching heart rate: \(error.localizedDescription)"); return nil }
-        }() : nil
 
-        async let stepsResult: Double? = sampleTypes.contains(HKQuantityType(.stepCount)) ? {
-            do { return try await self.getStepCount(date: date) }
-            catch { debugPrint("Error fetching step count: \(error.localizedDescription)"); return nil }
-        }() : nil
-
-        async let durationResult: Double? = sampleTypes.contains(HKQuantityType(.stepCount)) ? {
-            do { return try await self.getTotalDurationInMinutes(date: date) }
-            catch { debugPrint("Error fetching duration: \(error.localizedDescription)"); return nil }
-        }() : nil
-
-        async let distanceResult: Double? = sampleTypes.contains(HKQuantityType(.distanceWalkingRunning)) ? {
-            do { return try await self.getDistanceWalkingRunning(date: date, unit: .meter()) }
-            catch { debugPrint("Error fetching distance: \(error.localizedDescription)"); return nil }
-        }() : nil
-
-        async let activeCaloriesResult: Double? = sampleTypes.contains(HKQuantityType(.activeEnergyBurned)) ? {
-            do { return try await self.getActiveEnergyBurned(date: date) }
-            catch { debugPrint("Error fetching active calories: \(error.localizedDescription)"); return nil }
-        }() : nil
-
-        return WalkingActivityData(
-            date: date,
-            steps: await stepsResult,
-            activeCalories: await activeCaloriesResult,
-            distanceMeters: await distanceResult,
-            durationMinutes: await durationResult,
-            averageHeartRate: await heartRateResult
-        )
+    /// Replaces a failed observer query with a fresh registration so observation keeps running.
+    private func restartWalkingActivityObserver(
+        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
+    ) {
+        stopWalkingActivityObserver()
+        startWalkingActivityObserver(completion: completion)
     }
-    
-    private func getWalkingActivity(date: Date) async -> WalkingActivityData {
-        async let averageHeartRate = try await self.getAverageHeartRate(date: date)
-        async let steps = try self.getStepCount(date: date)
-        async let durationMinutes = try self.getTotalDurationInMinutes(date: date)
-        async let distanceMeters = try self.getDistanceWalkingRunning(date: date, unit: .meter())
-        async let activeCalories = try self.getActiveEnergyBurned(date: date)
-        
-        return await WalkingActivityData(
-            date: date,
-            steps: try? steps,
-            activeCalories: try? activeCalories,
-            distanceMeters: try? distanceMeters,
-            durationMinutes: try? durationMinutes,
-            averageHeartRate: try? averageHeartRate
-        )
+
+    /// Reads walking activity for a date, requesting authorization first and
+    /// distinguishing missing samples from reads that failed.
+    ///
+    /// - Parameters:
+    ///   - date: The date to query.
+    ///   - sampleTypes: The sample types whose metrics should be read.
+    /// - Returns: The walking activity where `nil` metrics mean HealthKit has no samples.
+    /// - Throws: ``WalkingActivityReadError`` when the read cannot be trusted, or a
+    ///   `Permission.Error` when authorization cannot be established.
+    func readWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async throws -> WalkingActivityData {
+        try await statusForAuthorizationRequest(toWrite: [], toRead: sampleTypes)
+        return try await readWalkingActivityMetrics(date: date, sampleTypes: sampleTypes)
+    }
+
+    /// Reads every requested metric concurrently and aggregates the outcomes honestly,
+    /// without triggering an authorization request, so it is safe for background deliveries.
+    ///
+    /// - Parameters:
+    ///   - date: The date to query.
+    ///   - sampleTypes: The sample types whose metrics should be read.
+    /// - Returns: The aggregated walking activity for the date.
+    /// - Throws: ``WalkingActivityReadError`` when the read cannot be trusted.
+    func readWalkingActivityMetrics(date: Date, sampleTypes: Set<HKSampleType>) async throws -> WalkingActivityData {
+        async let stepsOutcome = metricOutcome(attempted: sampleTypes.contains(HKQuantityType(.stepCount))) {
+            try await self.getStepCount(date: date)
+        }
+        async let durationOutcome = metricOutcome(attempted: sampleTypes.contains(HKQuantityType(.stepCount))) {
+            try await self.getTotalDurationInMinutes(date: date)
+        }
+        async let distanceOutcome = metricOutcome(attempted: sampleTypes.contains(HKQuantityType(.distanceWalkingRunning))) {
+            try await self.getDistanceWalkingRunning(date: date, unit: .meter())
+        }
+        async let caloriesOutcome = metricOutcome(attempted: sampleTypes.contains(HKQuantityType(.activeEnergyBurned))) {
+            try await self.getActiveEnergyBurned(date: date)
+        }
+        async let heartRateOutcome = metricOutcome(attempted: sampleTypes.contains(HKQuantityType(.heartRate))) {
+            try await self.getAverageHeartRate(date: date)
+        }
+
+        var outcomes: [WalkingMetric: Result<Double?, any Error>] = [:]
+        outcomes[.steps] = await stepsOutcome
+        outcomes[.durationMinutes] = await durationOutcome
+        outcomes[.distanceMeters] = await distanceOutcome
+        outcomes[.activeCalories] = await caloriesOutcome
+        outcomes[.averageHeartRate] = await heartRateOutcome
+
+        return try WalkingActivityReadAggregator.aggregate(date: date, outcomes: outcomes)
+    }
+
+    /// Wraps a single metric read into an outcome, or `nil` when the metric was not requested.
+    private func metricOutcome(
+        attempted: Bool,
+        read: @escaping @Sendable () async throws -> Double?
+    ) async -> Result<Double?, any Error>? {
+        guard attempted else { return nil }
+        do {
+            return .success(try await read())
+        } catch {
+            return .failure(error)
+        }
     }
 }
