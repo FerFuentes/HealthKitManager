@@ -30,4 +30,12 @@ struct WalkingActivityObserverTests {
         #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: 0) == nil)
         #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: -3) == nil)
     }
+
+    @Test func observerWatchesEveryWalkingDeliveryType() {
+        let manager = HealthKitManager.shared
+        let observed = Set(manager.walkingActivityObserverDescriptors().map(\.sampleType))
+        let enabled = Set(manager.forWalkingActivityQuantityType.map { $0 as HKSampleType })
+
+        #expect(observed == enabled)
+    }
 }

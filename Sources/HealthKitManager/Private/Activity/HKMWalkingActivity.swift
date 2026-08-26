@@ -122,13 +122,21 @@ internal extension HealthKitManager {
         }
     }
 
+    /// The query descriptors the walking observer registers: one per metric type the
+    /// package enables for background delivery by default, so no delivery ever arrives
+    /// without an observer to process and acknowledge it.
+    func walkingActivityObserverDescriptors() -> [HKQueryDescriptor] {
+        let predicate = getPredicateForWalkingActivityAnchorQuery()
+        return forWalkingActivityQuantityType.map {
+            HKQueryDescriptor(sampleType: $0, predicate: predicate)
+        }
+    }
+
     /// Registers the observer query whose handler acknowledges the current delivery on
     /// every path. Callers must hold `walkingActivityObserverLock`.
     private func registerWalkingActivityObserver() {
-        let predicate = getPredicateForWalkingActivityAnchorQuery()
         let query = HKObserverQuery(
-            sampleType: HKQuantityType(.stepCount),
-            predicate: predicate) { [weak self] _, deliveryCompletionHandler, error in
+            queryDescriptors: walkingActivityObserverDescriptors()) { [weak self] _, _, deliveryCompletionHandler, error in
                 nonisolated(unsafe) let acknowledgeDelivery = deliveryCompletionHandler
 
                 guard let self = self else {
