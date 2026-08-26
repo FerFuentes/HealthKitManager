@@ -179,29 +179,60 @@ internal extension HealthKitManager {
         return query
     }
 
-    /// Reads walking activity for a date, requesting authorization first and
-    /// distinguishing missing samples from reads that failed.
+    /// Reads walking activity for a date, requiring authorization to be established
+    /// already and distinguishing missing samples from reads that failed.
+    ///
+    /// Never presents the permission sheet: asking the user is an explicit, user-initiated
+    /// call, not a side effect of reading.
     ///
     /// - Parameters:
     ///   - date: The date to query.
     ///   - sampleTypes: The sample types whose metrics should be read.
     /// - Returns: The walking activity where `nil` metrics mean HealthKit has no samples.
     /// - Throws: ``WalkingActivityReadError`` when the read cannot be trusted, or a
-    ///   `Permission.Error` when authorization cannot be established.
+    ///   `Permission.Error` when authorization was never established.
     func readWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async throws -> WalkingActivityData {
-        try await statusForAuthorizationRequest(toWrite: [], toRead: sampleTypes)
+        try await requireEstablishedAuthorization(toRead: sampleTypes)
         return try await readWalkingActivityMetrics(date: date, sampleTypes: sampleTypes)
     }
 
     /// Reads every requested metric concurrently and aggregates the outcomes honestly,
-    /// without triggering an authorization request, so it is safe for background deliveries.
+    /// without touching authorization, so it is safe for background deliveries.
     ///
     /// - Parameters:
     ///   - date: The date to query.
     ///   - sampleTypes: The sample types whose metrics should be read.
     /// - Returns: The aggregated walking activity for the date.
-    /// - Throws: ``WalkingActivityReadError`` when the read cannot be trusted.
+    /// - Throws: ``WalkingActivityReadError`` when the read cannot be trusted, or
+    ///   `Permission.Error.invalidParameters` when no supported metric was requested.
     func readWalkingActivityMetrics(date: Date, sampleTypes: Set<HKSampleType>) async throws -> WalkingActivityData {
+        try WalkingActivityReadAggregator.aggregate(
+            date: date,
+            outcomes: await walkingActivityMetricOutcomes(date: date, sampleTypes: sampleTypes)
+        )
+    }
+
+    /// Reads the requested metrics and degrades failures to absent values instead of
+    /// failing the whole read, preserving whatever the day did produce.
+    ///
+    /// - Parameters:
+    ///   - date: The date to query.
+    ///   - sampleTypes: The sample types whose metrics should be read.
+    /// - Returns: The walking activity, with failed metrics absent.
+    func degradedWalkingActivity(date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
+        WalkingActivityReadAggregator.lenientActivity(
+            date: date,
+            outcomes: await walkingActivityMetricOutcomes(date: date, sampleTypes: sampleTypes)
+        )
+    }
+
+    /// Reads every requested metric concurrently, recording per-metric success or failure.
+    ///
+    /// - Parameters:
+    ///   - date: The date to query.
+    ///   - sampleTypes: The sample types whose metrics should be read.
+    /// - Returns: One outcome per attempted metric; unsupported types are absent.
+    private func walkingActivityMetricOutcomes(date: Date, sampleTypes: Set<HKSampleType>) async -> [WalkingMetric: Result<Double?, any Error>] {
         async let stepsOutcome = metricOutcome(attempted: sampleTypes.contains(HKQuantityType(.stepCount))) {
             try await self.getStepCount(date: date)
         }
@@ -224,8 +255,7 @@ internal extension HealthKitManager {
         outcomes[.distanceMeters] = await distanceOutcome
         outcomes[.activeCalories] = await caloriesOutcome
         outcomes[.averageHeartRate] = await heartRateOutcome
-
-        return try WalkingActivityReadAggregator.aggregate(date: date, outcomes: outcomes)
+        return outcomes
     }
 
     /// Wraps a single metric read into an outcome, or `nil` when the metric was not requested.

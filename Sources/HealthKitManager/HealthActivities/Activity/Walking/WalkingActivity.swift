@@ -96,12 +96,7 @@ extension WalkingActivity {
     
     @available(*, deprecated, message: "Collapses failed reads to nil, indistinguishable from an empty day. Use readWalkingActivityData(by:sampleTypes:) instead.")
     public func getWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
-        do {
-            return try await HealthKitManager.shared.readWalkingActivity(date: date, sampleTypes: sampleTypes)
-        } catch {
-            debugPrint("Error reading walking activity: \(error.localizedDescription)")
-            return WalkingActivityData(date: date, steps: nil, activeCalories: nil, distanceMeters: nil, durationMinutes: nil, averageHeartRate: nil)
-        }
+        await HealthKitManager.shared.degradedWalkingActivity(date: date, sampleTypes: sampleTypes)
     }
 
     public func readWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async throws -> WalkingActivityData {

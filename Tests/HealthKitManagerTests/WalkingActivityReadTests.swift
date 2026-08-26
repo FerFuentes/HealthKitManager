@@ -74,11 +74,57 @@ struct WalkingActivityReadTests {
         #expect(data.averageHeartRate == nil)
     }
 
-    @Test func aggregateReturnsEmptyDayWhenNothingWasAttempted() throws {
-        let data = try WalkingActivityReadAggregator.aggregate(date: Date(), outcomes: [:])
+    @Test func aggregateRejectsAReadThatAttemptedNothing() {
+        do {
+            _ = try WalkingActivityReadAggregator.aggregate(date: Date(), outcomes: [:])
+            Issue.record("Expected invalidParameters to be thrown")
+        } catch Permission.Error.invalidParameters {
+        } catch {
+            Issue.record("Expected invalidParameters, got \(error)")
+        }
+    }
 
-        #expect(data.steps == nil)
+    @Test func aggregateThrowsWhenTheOnlySuccessfulMetricsAreEmpty() {
+        do {
+            _ = try WalkingActivityReadAggregator.aggregate(date: Date(), outcomes: [
+                .steps: .failure(MetricFailure()),
+                .durationMinutes: .failure(MetricFailure()),
+                .distanceMeters: .failure(MetricFailure()),
+                .activeCalories: .failure(MetricFailure()),
+                .averageHeartRate: .success(nil)
+            ])
+            Issue.record("Expected allMetricsFailed to be thrown")
+        } catch WalkingActivityReadError.allMetricsFailed(let underlying) {
+            #expect(underlying.count == 4)
+        } catch {
+            Issue.record("Expected allMetricsFailed, got \(error)")
+        }
+    }
+
+    @Test func aggregateTrustsAPartialReadThatCarriesRealValues() throws {
+        let data = try WalkingActivityReadAggregator.aggregate(date: Date(), outcomes: [
+            .steps: .success(900),
+            .durationMinutes: .failure(MetricFailure()),
+            .averageHeartRate: .success(nil)
+        ])
+
+        #expect(data.steps == 900)
         #expect(data.durationMinutes == nil)
+        #expect(data.averageHeartRate == nil)
+    }
+
+    @Test func lenientAggregationDegradesFailedMetricsWithoutLosingTheRest() {
+        let date = Date()
+        let data = WalkingActivityReadAggregator.lenientActivity(date: date, outcomes: [
+            .steps: .success(1500),
+            .durationMinutes: .failure(MetricFailure()),
+            .distanceMeters: .failure(HKError(.errorDatabaseInaccessible))
+        ])
+
+        #expect(data.date == date)
+        #expect(data.steps == 1500)
+        #expect(data.durationMinutes == nil)
+        #expect(data.distanceMeters == nil)
     }
 
     @Test func aggregateThrowsWhenDatabaseIsLockedEvenWithPartialData() {

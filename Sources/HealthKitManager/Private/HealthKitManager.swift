@@ -192,6 +192,24 @@ internal class HealthKitManager: @unchecked Sendable {
         }
     }
 
+    /// Validates that authorization for the given types has already been requested,
+    /// without ever presenting the permission sheet.
+    ///
+    /// - Parameter types: The types to be read.
+    /// - Throws: `Permission.Error` when HealthKit is unavailable, no type was given, or
+    ///   the user was never asked.
+    internal func requireEstablishedAuthorization(toRead types: Set<HKSampleType>) async throws {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            throw Permission.Error.unavailable
+        }
+        guard !types.isEmpty else {
+            throw Permission.Error.invalidParameters("At least one type to read must be provided.")
+        }
+
+        let status = try await healthStore.statusForAuthorizationRequest(toShare: [], read: types)
+        try Self.requireEstablishedAuthorization(status)
+    }
+
     /// Enables or disables hourly background delivery for the given sample types.
     ///
     /// Authorization must already be established: this never presents the permission sheet,
@@ -208,8 +226,7 @@ internal class HealthKitManager: @unchecked Sendable {
         }
 
         if enable {
-            let status = try await healthStore.statusForAuthorizationRequest(toShare: [], read: types)
-            try Self.requireEstablishedAuthorization(status)
+            try await requireEstablishedAuthorization(toRead: types)
             for type in types {
                 try await healthStore.enableBackgroundDelivery(for: type, frequency: .hourly)
             }
