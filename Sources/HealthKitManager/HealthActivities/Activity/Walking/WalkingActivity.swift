@@ -91,7 +91,7 @@ extension WalkingActivity {
     }
     
     public func getCaloriesBurned(by date: Date) async throws -> Double? {
-        try await HealthKitManager.shared.getActiveEnergyBurned(date: Date())
+        try await HealthKitManager.shared.getActiveEnergyBurned(date: date)
     }
     
     @available(*, deprecated, message: "Collapses failed reads to nil, indistinguishable from an empty day. Use readWalkingActivityData(by:sampleTypes:) instead.")
