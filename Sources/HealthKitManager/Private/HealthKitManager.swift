@@ -204,40 +204,50 @@ internal class HealthKitManager: @unchecked Sendable {
         )
     }
     
-    internal func backgroundDeliveryForReadTypes(enable: Bool, types: Set<HKQuantityType>) async {
-        do {
-            if enable {
-                try await statusForAuthorizationRequest(toWrite: [], toRead: types)
-                for type in types {
-                    try await healthStore.enableBackgroundDelivery(for: type, frequency: .hourly)
-                }
-            } else {
-                for type in types {
-                    try await healthStore.disableBackgroundDelivery(for: type)
-                }
-            }
-            
-        } catch {
-            debugPrint("Error enabling background delivery: \(error.localizedDescription)")
+    /// Validates that authorization has already been requested, without ever presenting
+    /// the permission sheet, so background-delivery setup at cold launch stays silent.
+    ///
+    /// - Parameter status: The store's authorization request status for the types involved.
+    /// - Throws: `Permission.Error.needToRequestPermission` when the app has not asked the
+    ///   user yet, or `Permission.Error.unavailable` when the status cannot be determined.
+    internal static func requireEstablishedAuthorization(_ status: HKAuthorizationRequestStatus) throws {
+        switch status {
+        case .unnecessary:
+            return
+        case .shouldRequest:
+            throw Permission.Error.needToRequestPermission
+        case .unknown:
+            throw Permission.Error.unavailable
+        @unknown default:
+            throw Permission.Error.unavailable
         }
     }
-    
-    /// Enable or disable background delivery for any HKObjectType (quantity types, category types, etc.)
-    internal func backgroundDeliveryForSampleTypes(enable: Bool, types: Set<HKSampleType>) async {
-        do {
-            if enable {
-                try await statusForAuthorizationRequest(toWrite: [], toRead: types)
-                for type in types {
-                    try await healthStore.enableBackgroundDelivery(for: type, frequency: .hourly)
-                }
-            } else {
-                for type in types {
-                    try await healthStore.disableBackgroundDelivery(for: type)
-                }
+
+    /// Enables or disables hourly background delivery for the given sample types.
+    ///
+    /// Authorization must already be established: this never presents the permission sheet,
+    /// because it runs from app-startup paths where no user action happened.
+    ///
+    /// - Parameters:
+    ///   - enable: `true` to enable delivery, `false` to disable it.
+    ///   - types: The sample types to toggle.
+    /// - Throws: A `Permission.Error` when HealthKit is unavailable or authorization was
+    ///   never requested, or the first `HKHealthStore` failure while toggling a type.
+    internal func setBackgroundDelivery(enable: Bool, types: Set<HKSampleType>) async throws {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            throw Permission.Error.unavailable
+        }
+
+        if enable {
+            let status = try await healthStore.statusForAuthorizationRequest(toShare: [], read: types)
+            try Self.requireEstablishedAuthorization(status)
+            for type in types {
+                try await healthStore.enableBackgroundDelivery(for: type, frequency: .hourly)
             }
-            
-        } catch {
-            debugPrint("Error enabling background delivery: \(error.localizedDescription)")
+        } else {
+            for type in types {
+                try await healthStore.disableBackgroundDelivery(for: type)
+            }
         }
     }
     
