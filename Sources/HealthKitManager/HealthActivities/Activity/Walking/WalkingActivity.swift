@@ -18,10 +18,11 @@ public protocol WalkingActivity {
     /// - Returns: The total step count, or `nil` if unavailable.
     func getStepsCount(by date: Date) async throws -> Double?
     
-    /// Gets the total active walking minutes for a specific date.
+    /// Gets the total active walking minutes for a specific date, with overlapping
+    /// device recordings merged so concurrent iPhone and Watch samples count once.
     /// - Parameter date: The date to query.
-    /// - Returns: Total active minutes.
-    func getTotalActiveMinutesWalking(by date: Date) async throws -> Double
+    /// - Returns: Total active minutes, or `nil` when the day has no step samples.
+    func getTotalActiveMinutesWalking(by date: Date) async throws -> Double?
     
     /// Gets the walking and running distance for a specific date.
     /// - Parameters:
@@ -40,7 +41,23 @@ public protocol WalkingActivity {
     ///   - date: The date to query.
     ///   - sampleTypes: The set of sample types to include in the response.
     /// - Returns: A `WalkingActivityData` object with all requested metrics.
+    @available(*, deprecated, message: "Collapses failed reads to nil, indistinguishable from an empty day. Use readWalkingActivityData(by:sampleTypes:) instead.")
     func getWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData
+
+    /// Reads complete walking activity data for a specific date, distinguishing
+    /// missing samples from reads that failed.
+    ///
+    /// Metrics are `nil` only when HealthKit genuinely has no samples for them; a read
+    /// that cannot be trusted throws instead of degrading into an empty-looking day.
+    ///
+    /// - Parameters:
+    ///   - date: The date to query.
+    ///   - sampleTypes: The set of sample types to include in the response.
+    /// - Returns: A `WalkingActivityData` object with all requested metrics.
+    /// - Throws: `WalkingActivityReadError.databaseInaccessible` when the device is locked,
+    ///   `WalkingActivityReadError.allMetricsFailed` when no metric could be read, or a
+    ///   `Permission.Error` when authorization cannot be established.
+    func readWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async throws -> WalkingActivityData
     
     /// Gets the average heart rate for a specific date.
     /// - Parameter date: The date to query.
@@ -48,6 +65,11 @@ public protocol WalkingActivity {
     func getAverageHeartRate(date: Date) async throws -> Double?
     
     /// Starts or stops observing walking activity changes in the background.
+    ///
+    /// Every background delivery is acknowledged after processing, on success and failure
+    /// alike, so iOS keeps waking the app. A failure of `WalkingActivityReadError.databaseInaccessible`
+    /// means the device was locked during the delivery: skip submitting and wait for the next update.
+    ///
     /// - Parameters:
     ///   - start: `true` to start observing, `false` to stop.
     ///   - completion: Called when walking activity data changes.
@@ -60,7 +82,7 @@ extension WalkingActivity {
         try await HealthKitManager.shared.getStepCount(date: date)
     }
     
-    public func getTotalActiveMinutesWalking(by date: Date) async throws -> Double {
+    public func getTotalActiveMinutesWalking(by date: Date) async throws -> Double? {
         try await HealthKitManager.shared.getTotalDurationInMinutes(date: date)
     }
     
@@ -69,11 +91,16 @@ extension WalkingActivity {
     }
     
     public func getCaloriesBurned(by date: Date) async throws -> Double? {
-        try await HealthKitManager.shared.getActiveEnergyBurned(date: Date())
+        try await HealthKitManager.shared.getActiveEnergyBurned(date: date)
     }
     
+    @available(*, deprecated, message: "Collapses failed reads to nil, indistinguishable from an empty day. Use readWalkingActivityData(by:sampleTypes:) instead.")
     public func getWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async -> WalkingActivityData {
-        await HealthKitManager.shared.getWalkingActivity(date: date, sampleTypes: sampleTypes)
+        await HealthKitManager.shared.degradedWalkingActivity(date: date, sampleTypes: sampleTypes)
+    }
+
+    public func readWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async throws -> WalkingActivityData {
+        try await HealthKitManager.shared.readWalkingActivity(date: date, sampleTypes: sampleTypes)
     }
     
     public func observeWalkingActivityInBackground(_ start: Bool, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {

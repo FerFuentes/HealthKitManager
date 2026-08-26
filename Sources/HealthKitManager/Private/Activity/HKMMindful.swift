@@ -26,47 +26,16 @@ internal extension HealthKitManager {
         _ start: Bool,
         completion: @escaping @Sendable (Result<MindfulActivityData?, Error>) -> Void
     ) {
-        if start {
-            guard mindfulActivityObserverQuery == nil else {
-                return
-            }
-            
-            let mindfulType = HKCategoryType(.mindfulSession)
-            let query = HKObserverQuery(
-                sampleType: mindfulType,
-                predicate: nil) { [weak self] query, completionHandler, error in
-                    guard let self = self else { return }
-                    
-                    if let error = error {
-                        clearMindfulActivityObserverQuery()
-                        debugPrint("Error observing mindful activity: \(error)")
-                        completion(.failure(error))
-                    } else {
-                        Task {
-                            do {
-                                let activity = try await self.getMindfulActivity(date: Date())
-                                completion(.success(activity))
-                            } catch {
-                                completion(.failure(error))
-                            }
-                        }
-                    }
-                    mindfulActivityCompletionHandler = completionHandler
-                }
-            
-            healthStore.execute(query)
-            mindfulActivityObserverQuery = query
-        } else {
-            if let query = mindfulActivityObserverQuery {
-                healthStore.stop(query)
-                clearMindfulActivityObserverQuery()
-            }
-        }
-    }
-    
-    func clearMindfulActivityObserverQuery() {
-        mindfulActivityCompletionHandler?()
-        mindfulActivityObserverQuery = nil
+        observeQuery(
+            start,
+            coordinator: mindfulActivityObservation,
+            descriptors: { [HKQueryDescriptor(sampleType: HKCategoryType(.mindfulSession), predicate: nil)] },
+            read: { [weak self] date in
+                guard let self else { throw Permission.Error.unavailable }
+                return try await self.getMindfulActivity(date: date)
+            },
+            completion: completion
+        )
     }
     
     // MARK: - Predicates and Descriptors
@@ -90,24 +59,25 @@ internal extension HealthKitManager {
         )
     }
     
+    /// Reads the total mindful time for a date.
+    ///
+    /// - Parameter date: The day to query.
+    /// - Returns: The seconds spent in mindful sessions.
+    /// - Throws: A `Permission.Error` or `HKError` when the samples cannot be read; the
+    ///   read never reports zero seconds for a failure.
     func getMindfulActivity(date: Date) async throws -> MindfulActivityData {
         var totalMindfulSeconds: Double = 0
         
         let category = HKCategoryType(.mindfulSession)
-        
-        do {
-            _ = try checkAuthorizationStatus(for: category)
-            let sample = try await getDescriptorForMindful(date: date)
-                .result(for: healthStore)
-            
-            for sample in sample {
-                let duration = sample.endDate.timeIntervalSince(sample.startDate)
-                totalMindfulSeconds += duration
-            }
-        } catch {
-            debugPrint("Error fetching mindful data: \(error.localizedDescription)")
+        _ = try checkAuthorizationStatus(for: category)
+
+        let samples = try await getDescriptorForMindful(date: date).result(for: healthStore)
+
+        for sample in samples {
+            totalMindfulSeconds += sample.endDate.timeIntervalSince(sample.startDate)
         }
         
         return MindfulActivityData(mindfulSeconds: totalMindfulSeconds)
     }
+
 }

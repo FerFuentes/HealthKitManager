@@ -27,46 +27,20 @@ internal extension HealthKitManager {
         _ start: Bool,
         completion: @escaping @Sendable (Result<DietaryNutritionData?, Error>) -> Void
     ) {
-        if start {
-            guard nutritionObserverQuery == nil else {
-                return
-            }
-            
-            let excludeManualPredicate = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
-            let queryDescriptors = forDietaryNutritionQuantityType.map { type in
-                HKQueryDescriptor(sampleType: type, predicate: excludeManualPredicate)
-            }
-            
-            let query = HKObserverQuery(
-                queryDescriptors: queryDescriptors) { [weak self] query, updatedSampleTypes, completionHandler, error in
-                    guard let self = self else { return }
-                    
-                    if let error = error {
-                        clearNutritionObserverQuery()
-                        debugPrint("Error observing nutrition: \(error)")
-                        completion(.failure(error))
-                    } else {
-                        Task {
-                            let nutrition = await self.getDietaryNutrition(date: Date(), sampleTypes: self.forDietaryNutritionQuantityType)
-                            completion(.success(nutrition))
-                        }
-                    }
-                    nutritionCompletionHandler = completionHandler
-                }
-            
-            healthStore.execute(query)
-            nutritionObserverQuery = query
-        } else {
-            if let query = nutritionObserverQuery {
-                healthStore.stop(query)
-                clearNutritionObserverQuery()
-            }
-        }
-    }
-    
-    func clearNutritionObserverQuery() {
-        nutritionCompletionHandler?()
-        nutritionObserverQuery = nil
+        observeQuery(
+            start,
+            coordinator: nutritionObservation,
+            descriptors: { [weak self] in
+                guard let self else { return [] }
+                let excludeManual = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
+                return self.forDietaryNutritionQuantityType.map { HKQueryDescriptor(sampleType: $0, predicate: excludeManual) }
+            },
+            read: { [weak self] date in
+                guard let self else { throw Permission.Error.unavailable }
+                return try await self.getDietaryNutrition(date: date, sampleTypes: self.forDietaryNutritionQuantityType)
+            },
+            completion: completion
+        )
     }
     
     // MARK: - Data Fetching Methods
@@ -91,86 +65,57 @@ internal extension HealthKitManager {
         return Double(String(format: "%.2f", waterOncesCount)) ?? 0.0
     }
     
-    func getDietaryNutrition(date: Date, sampleTypes: Set<HKSampleType>) async -> DietaryNutritionData {
+    /// Reads the day's dietary totals for the requested nutrients.
+    ///
+    /// - Parameters:
+    ///   - date: The day to query.
+    ///   - sampleTypes: The nutrient types to read.
+    /// - Returns: The nutrients that could be read, with absent ones left `nil`.
+    /// - Throws: The underlying failure when nothing could be read, so a broken read is
+    ///   never reported as a day without food.
+    func getDietaryNutrition(date: Date, sampleTypes: Set<HKSampleType>) async throws -> DietaryNutritionData {
         var calories: Double?
         var carbohydrates: Double?
         var protein: Double?
         var fat: Double?
-        
+        var failures: [any Error] = []
+
         for sampleType in sampleTypes {
             guard let quantityType = sampleType as? HKQuantityType else {
                 continue
             }
+
+            let unit: HKUnit
             switch quantityType {
-                
             case HKQuantityType(.dietaryEnergyConsumed):
-                do {
-                    _ = try checkAuthorizationStatus(for: quantityType)
-                    calories = try await getDescriptor(
-                        date: date,
-                        type: quantityType,
-                        options: .cumulativeSum,
-                        excludeManual: false
-                    ).result(for: healthStore)
-                        .statistics(for: date)?
-                        .sumQuantity()?
-                        .doubleValue(for: HKUnit.kilocalorie())
-                } catch {
-                    debugPrint("Error fetching dietary energy: \(error.localizedDescription)")
-                }
-                
-            case HKQuantityType(.dietaryFatTotal):
-                do {
-                    _ = try checkAuthorizationStatus(for: quantityType)
-                    fat = try await getDescriptor(
-                        date: date,
-                        type: quantityType,
-                        options: .cumulativeSum,
-                        excludeManual: false
-                    ).result(for: healthStore)
-                        .statistics(for: date)?
-                        .sumQuantity()?
-                        .doubleValue(for: HKUnit.gram())
-                } catch {
-                    debugPrint("Error fetching dietary fat: \(error.localizedDescription)")
-                }
-                
-            case HKQuantityType(.dietaryCarbohydrates):
-                do {
-                    _ = try checkAuthorizationStatus(for: quantityType)
-                    carbohydrates = try await getDescriptor(
-                        date: date,
-                        type: quantityType,
-                        options: .cumulativeSum,
-                        excludeManual: false
-                    ).result(for: healthStore)
-                        .statistics(for: date)?
-                        .sumQuantity()?
-                        .doubleValue(for: HKUnit.gram())
-                } catch {
-                    debugPrint("Error fetching dietary carbohydrates: \(error.localizedDescription)")
-                }
-                
-            case HKQuantityType(.dietaryProtein):
-                do {
-                    _ = try checkAuthorizationStatus(for: quantityType)
-                    protein = try await getDescriptor(
-                        date: date,
-                        type: quantityType,
-                        options: .cumulativeSum,
-                        excludeManual: false
-                    ).result(for: healthStore)
-                        .statistics(for: date)?
-                        .sumQuantity()?
-                        .doubleValue(for: HKUnit.gram())
-                } catch {
-                    debugPrint("Error fetching dietary protein: \(error.localizedDescription)")
-                }
+                unit = .kilocalorie()
+            case HKQuantityType(.dietaryFatTotal), HKQuantityType(.dietaryCarbohydrates), HKQuantityType(.dietaryProtein):
+                unit = .gram()
             default:
-                debugPrint("Unknown dietary quantity type: \(quantityType)")
+                continue
+            }
+
+            do {
+                let total = try await readDietaryTotal(date: date, type: quantityType, unit: unit)
+                switch quantityType {
+                case HKQuantityType(.dietaryEnergyConsumed):
+                    calories = total
+                case HKQuantityType(.dietaryFatTotal):
+                    fat = total
+                case HKQuantityType(.dietaryCarbohydrates):
+                    carbohydrates = total
+                default:
+                    protein = total
+                }
+            } catch {
+                failures.append(error)
             }
         }
-        
+
+        if let failure = PartialMetricRead.failureToSurface(readValues: [calories, carbohydrates, protein, fat], failures: failures) {
+            throw failure
+        }
+
         return DietaryNutritionData(
             caloriesKcal: calories,
             carbohydratesGrams: carbohydrates,
@@ -178,4 +123,19 @@ internal extension HealthKitManager {
             fatGrams: fat
         )
     }
+
+    /// Reads one nutrient's daily total, including manually entered samples.
+    private func readDietaryTotal(date: Date, type: HKQuantityType, unit: HKUnit) async throws -> Double? {
+        _ = try checkAuthorizationStatus(for: type)
+        return try await getDescriptor(
+            date: date,
+            type: type,
+            options: .cumulativeSum,
+            excludeManual: false
+        ).result(for: healthStore)
+            .statistics(for: date)?
+            .sumQuantity()?
+            .doubleValue(for: unit)
+    }
+
 }

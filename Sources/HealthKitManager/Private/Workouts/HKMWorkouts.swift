@@ -28,47 +28,16 @@ internal extension HealthKitManager {
         _ start: Bool,
         completion: @escaping @Sendable (Result<WorkoutData?, Error>) -> Void
     ) {
-        if start {
-            guard workoutsObserverQuery == nil else {
-                return
-            }
-            
-            let workoutType = HKSampleType.workoutType()
-            let query = HKObserverQuery(
-                sampleType: workoutType,
-                predicate: nil) { [weak self] query, completionHandler, error in
-                    guard let self = self else { return }
-                    
-                    if let error = error {
-                        clearWorkoutsObserverQuery()
-                        debugPrint("Error observing workouts: \(error)")
-                        completion(.failure(error))
-                    } else {
-                        Task {
-                            do {
-                                let workouts = try await self.getAllWorkouts(date: Date())
-                                completion(.success(workouts))
-                            } catch {
-                                completion(.failure(error))
-                            }
-                        }
-                    }
-                    workoutsCompletionHandler = completionHandler
-                }
-            
-            healthStore.execute(query)
-            workoutsObserverQuery = query
-        } else {
-            if let query = workoutsObserverQuery {
-                healthStore.stop(query)
-                clearWorkoutsObserverQuery()
-            }
-        }
-    }
-    
-    func clearWorkoutsObserverQuery() {
-        workoutsCompletionHandler?()
-        workoutsObserverQuery = nil
+        observeQuery(
+            start,
+            coordinator: workoutsObservation,
+            descriptors: { [HKQueryDescriptor(sampleType: HKSampleType.workoutType(), predicate: nil)] },
+            read: { [weak self] date in
+                guard let self else { throw Permission.Error.unavailable }
+                return try await self.getAllWorkouts(date: date)
+            },
+            completion: completion
+        )
     }
     
     // MARK: - Predicates and Descriptors

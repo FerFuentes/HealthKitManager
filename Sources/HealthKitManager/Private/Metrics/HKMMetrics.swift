@@ -27,95 +27,60 @@ internal extension HealthKitManager {
         _ start: Bool,
         completion: @escaping @Sendable (Result<HeartRateData?, Error>) -> Void
     ) {
-        if start {
-            guard heartRateObserverQuery == nil else {
-                return
-            }
-            
-            let excludeManualPredicate = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
-            let queryDescriptors = forHeartRateQuantityType.map { type in
-                HKQueryDescriptor(sampleType: type, predicate: excludeManualPredicate)
-            }
-            
-            let query = HKObserverQuery(
-                queryDescriptors: queryDescriptors) { [weak self] query, updatedSampleTypes, completionHandler, error in
-                    guard let self = self else { return }
-                    
-                    if let error = error {
-                        clearHeartRateObserverQuery()
-                        debugPrint("Error observing heart rate: \(error)")
-                        completion(.failure(error))
-                    } else {
-                        Task {
-                            let heartRate = await self.getHeartRate(date: Date(), sampleTypes: self.forHeartRateQuantityType)
-                            completion(.success(heartRate))
-                        }
-                    }
-                    heartRateCompletionHandler = completionHandler
-                }
-            
-            healthStore.execute(query)
-            heartRateObserverQuery = query
-        } else {
-            if let query = heartRateObserverQuery {
-                healthStore.stop(query)
-                clearHeartRateObserverQuery()
-            }
-        }
-    }
-    
-    func clearHeartRateObserverQuery() {
-        heartRateCompletionHandler?()
-        heartRateObserverQuery = nil
+        observeQuery(
+            start,
+            coordinator: heartRateObservation,
+            descriptors: { [weak self] in
+                guard let self else { return [] }
+                let excludeManual = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
+                return self.forHeartRateQuantityType.map { HKQueryDescriptor(sampleType: $0, predicate: excludeManual) }
+            },
+            read: { [weak self] date in
+                guard let self else { throw Permission.Error.unavailable }
+                return try await self.getHeartRate(date: date, sampleTypes: self.forHeartRateQuantityType)
+            },
+            completion: completion
+        )
     }
     
     // MARK: - Data Fetching Methods
     
-    func getHeartRate(date: Date, sampleTypes: Set<HKSampleType>) async -> HeartRateData {
+    /// Reads the day's average and resting heart rate.
+    ///
+    /// - Parameters:
+    ///   - date: The day to query.
+    ///   - sampleTypes: The heart rate types to read.
+    /// - Returns: The rates that could be read, with absent ones left `nil`.
+    /// - Throws: The underlying failure when nothing could be read, so a broken read is
+    ///   never reported as a day without a heartbeat.
+    func getHeartRate(date: Date, sampleTypes: Set<HKSampleType>) async throws -> HeartRateData {
         var restingHeartRate: Double?
         var averageHeartRate: Double?
-        
+        var failures: [any Error] = []
+
         for sampleType in sampleTypes {
             guard let quantityType = sampleType as? HKQuantityType else {
                 continue
             }
-            switch quantityType {
-                
-            case HKQuantityType(.heartRate):
-                do {
-                    _ = try checkAuthorizationStatus(for: quantityType)
-                    averageHeartRate = try await getDescriptor(
-                        date: date,
-                        type: quantityType,
-                        options: .discreteAverage
-                    ).result(for: healthStore)
-                        .statistics(for: date)?
-                        .averageQuantity()?
-                        .doubleValue(for: HKUnit.count().unitDivided(by: HKUnit.minute()))
-                } catch {
-                    debugPrint("Error fetching heart rate: \(error.localizedDescription)")
-                }
-                
-            case HKQuantityType(.restingHeartRate):
-                do {
-                    _ = try checkAuthorizationStatus(for: quantityType)
-                    
-                    restingHeartRate = try await getDescriptor(
-                        date: date,
-                        type: quantityType,
-                        options: .discreteAverage
-                    ).result(for: healthStore)
-                        .statistics(for: date)?
-                        .averageQuantity()?.doubleValue(for: HKUnit.count().unitDivided(by: HKUnit.minute()))
 
-                } catch {
-                    debugPrint("Error fetching resting heart rate: \(error.localizedDescription)")
+            do {
+                switch quantityType {
+                case HKQuantityType(.heartRate):
+                    averageHeartRate = try await getAverageHeartRate(date: date)
+                case HKQuantityType(.restingHeartRate):
+                    restingHeartRate = try await getRestingHeartRate(date: date)
+                default:
+                    continue
                 }
-            default:
-                debugPrint("Unknown heart rate quantity type: \(quantityType)")
+            } catch {
+                failures.append(error)
             }
         }
-        
+
+        if let failure = PartialMetricRead.failureToSurface(readValues: [restingHeartRate, averageHeartRate], failures: failures) {
+            throw failure
+        }
+
         return HeartRateData(
             restingHeartRate: restingHeartRate,
             averageHeartRate: averageHeartRate

@@ -8,29 +8,15 @@ import HealthKit
 internal class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore = HKHealthStore()
-    internal var walkingActivityAnchoredQuery: HKAnchoredObjectQuery?
-    internal var walkingActivityObserverQuery: HKObserverQuery?
-    internal var walkingActivityCompletionHandler: HKObserverQueryCompletionHandler?
+    internal let walkingActivityObservation = HealthKitObservationCoordinator<WalkingActivityData>()
+    private let backgroundTypesLock = NSLock()
+    private var enabledWalkingActivityBackgroundTypes: Set<HKQuantityType>?
     
-    // Sleep Activity observer properties
-    internal var sleepActivityObserverQuery: HKObserverQuery?
-    internal var sleepActivityCompletionHandler: HKObserverQueryCompletionHandler?
-    
-    // Mindful Activity observer properties
-    internal var mindfulActivityObserverQuery: HKObserverQuery?
-    internal var mindfulActivityCompletionHandler: HKObserverQueryCompletionHandler?
-    
-    // Nutrition observer properties
-    internal var nutritionObserverQuery: HKObserverQuery?
-    internal var nutritionCompletionHandler: HKObserverQueryCompletionHandler?
-    
-    // Metrics (Heart Rate) observer properties
-    internal var heartRateObserverQuery: HKObserverQuery?
-    internal var heartRateCompletionHandler: HKObserverQueryCompletionHandler?
-    
-    // Workouts observer properties
-    internal var workoutsObserverQuery: HKObserverQuery?
-    internal var workoutsCompletionHandler: HKObserverQueryCompletionHandler?
+    internal let sleepActivityObservation = HealthKitObservationCoordinator<SleepActivityData>()
+    internal let mindfulActivityObservation = HealthKitObservationCoordinator<MindfulActivityData>()
+    internal let nutritionObservation = HealthKitObservationCoordinator<DietaryNutritionData>()
+    internal let heartRateObservation = HealthKitObservationCoordinator<HeartRateData>()
+    internal let workoutsObservation = HealthKitObservationCoordinator<WorkoutData>()
     
     private init() { }
     
@@ -43,6 +29,25 @@ internal class HealthKitManager: @unchecked Sendable {
         HKQuantityType(.activeEnergyBurned),
     ]
     
+    /// The walking types currently enabled for background delivery, falling back to the
+    /// package defaults until the caller enables an explicit set. The observer registers
+    /// exactly these, so no enabled type can deliver without a handler to acknowledge it.
+    internal var walkingActivityBackgroundTypes: Set<HKQuantityType> {
+        backgroundTypesLock.withLock { enabledWalkingActivityBackgroundTypes ?? forWalkingActivityQuantityType }
+    }
+
+    internal var walkingActivityBackgroundSampleTypes: Set<HKSampleType> {
+        Set(walkingActivityBackgroundTypes.map { $0 as HKSampleType })
+    }
+
+    /// Records which walking types background delivery was last enabled for, so the
+    /// observer and the reads follow the same set.
+    ///
+    /// - Parameter types: The enabled types, or `nil` once delivery is disabled.
+    internal func rememberWalkingActivityBackgroundTypes(_ types: Set<HKQuantityType>?) {
+        backgroundTypesLock.withLock { enabledWalkingActivityBackgroundTypes = types }
+    }
+
     internal let forDietaryNutritionQuantityType: Set = [
         HKQuantityType(.dietaryEnergyConsumed),
         HKQuantityType(.dietaryFatTotal),
@@ -71,41 +76,6 @@ internal class HealthKitManager: @unchecked Sendable {
     internal let forWorkoutsSampleType: Set<HKSampleType> = [
         HKSampleType.workoutType()
     ]
-    
-    /// Generic method to observe HealthKit changes using HKObserverQuery with async/await.
-    ///
-    /// This method provides a reusable async/await pattern for observing HealthKit data changes.
-    /// It can be used for custom observation scenarios beyond the built-in observer methods.
-    ///
-    /// - Parameters:
-    ///   - sampleTypes: Set of HKSampleType to observe
-    ///   - predicate: Optional predicate to filter the samples
-    /// - Returns: Set of updated sample types
-    /// - Throws: An error if the observation fails
-    internal func observeHealthKitQuery(sampleTypes: Set<HKSampleType>, predicate: NSPredicate?) async throws -> Set<HKSampleType> {
-        let queryDescriptors: [HKQueryDescriptor] = sampleTypes
-            .map { type in
-                HKQueryDescriptor(sampleType: type, predicate: predicate)
-            }
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            nonisolated(unsafe) var didResume = false
-            let query = HKObserverQuery(queryDescriptors: queryDescriptors) { query, updatedSampleTypes, completionHandler, error in
-                guard !didResume else { return }
-                didResume = true
-                
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: updatedSampleTypes ?? [])
-                }
-                
-                completionHandler()
-            }
-            
-            healthStore.execute(query)
-        }
-    }
     
     /// Checks the authorization status for a specific HealthKit object type.
     /// - Parameter type: The HealthKit object type to check.
@@ -202,41 +172,80 @@ internal class HealthKitManager: @unchecked Sendable {
         )
     }
     
-    internal func backgroundDeliveryForReadTypes(enable: Bool, types: Set<HKQuantityType>) async {
-        do {
-            if enable {
-                try await statusForAuthorizationRequest(toWrite: [], toRead: types)
-                for type in types {
-                    try await healthStore.enableBackgroundDelivery(for: type, frequency: .hourly)
-                }
-            } else {
-                for type in types {
-                    try await healthStore.disableBackgroundDelivery(for: type)
-                }
-            }
-            
-        } catch {
-            debugPrint("Error enabling background delivery: \(error.localizedDescription)")
+    /// Validates that authorization has already been requested, without ever presenting
+    /// the permission sheet, so background-delivery setup at cold launch stays silent.
+    ///
+    /// - Parameter status: The store's authorization request status for the types involved.
+    /// - Throws: `Permission.Error.needToRequestPermission` when the app has not asked the
+    ///   user yet, or `Permission.Error.unavailable` when the status cannot be determined.
+    internal static func requireEstablishedAuthorization(_ status: HKAuthorizationRequestStatus) throws {
+        switch status {
+        case .unnecessary:
+            return
+        case .shouldRequest:
+            throw Permission.Error.needToRequestPermission
+        case .unknown:
+            throw Permission.Error.unavailable
+        @unknown default:
+            throw Permission.Error.unavailable
         }
     }
-    
-    /// Enable or disable background delivery for any HKObjectType (quantity types, category types, etc.)
-    internal func backgroundDeliveryForSampleTypes(enable: Bool, types: Set<HKSampleType>) async {
-        do {
-            if enable {
-                try await statusForAuthorizationRequest(toWrite: [], toRead: types)
-                for type in types {
+
+    /// Validates that authorization for the given types has already been requested,
+    /// without ever presenting the permission sheet.
+    ///
+    /// - Parameter types: The types to be read.
+    /// - Throws: `Permission.Error` when HealthKit is unavailable, no type was given, or
+    ///   the user was never asked.
+    internal func requireEstablishedAuthorization(toRead types: Set<HKSampleType>) async throws {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            throw Permission.Error.unavailable
+        }
+        guard !types.isEmpty else {
+            throw Permission.Error.invalidParameters("At least one type to read must be provided.")
+        }
+
+        let status = try await healthStore.statusForAuthorizationRequest(toShare: [], read: types)
+        try Self.requireEstablishedAuthorization(status)
+    }
+
+    /// Enables or disables hourly background delivery for the given sample types.
+    ///
+    /// Enabling requires authorization to be established already: this never presents the
+    /// permission sheet, because it runs from app-startup paths where no user action
+    /// happened. Disabling is always attempted, even when HealthKit reports itself
+    /// unavailable, so teardown can never be blocked.
+    ///
+    /// Every type is attempted; the failures are collected rather than aborting the set
+    /// half-toggled.
+    ///
+    /// - Parameters:
+    ///   - enable: `true` to enable delivery, `false` to disable it.
+    ///   - types: The sample types to toggle.
+    /// - Throws: A `Permission.Error` when enabling without established authorization, or
+    ///   ``BackgroundDeliveryError`` naming the types that could not be toggled.
+    internal func setBackgroundDelivery(enable: Bool, types: Set<HKSampleType>) async throws {
+        if enable {
+            try await requireEstablishedAuthorization(toRead: types)
+        }
+
+        var failures: [(type: HKSampleType, error: any Error)] = []
+        for type in types {
+            do {
+                if enable {
                     try await healthStore.enableBackgroundDelivery(for: type, frequency: .hourly)
-                }
-            } else {
-                for type in types {
+                } else {
                     try await healthStore.disableBackgroundDelivery(for: type)
                 }
+            } catch {
+                failures.append((type, error))
             }
-            
-        } catch {
-            debugPrint("Error enabling background delivery: \(error.localizedDescription)")
+        }
+
+        if let failure = BackgroundDeliveryError(failures: failures) {
+            throw failure
         }
     }
+
     
 }
