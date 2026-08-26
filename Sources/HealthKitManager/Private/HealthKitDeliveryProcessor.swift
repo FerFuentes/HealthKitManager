@@ -11,9 +11,19 @@ import Foundation
 /// acknowledgement contract: the delivery is acknowledged on every path, and only after
 /// processing finished and the caller was notified. iOS permanently stops background
 /// delivery for a sample type after three unacknowledged deliveries.
+///
+/// - Note: Processing runs in a detached task, so the system can suspend the app between
+///   the read and the acknowledgement — a delivery interrupted that way is retried by
+///   HealthKit rather than lost. Holding a background assertion across the read would
+///   require blocking a thread for the whole async read, which trades a rare retry for a
+///   guaranteed priority inversion; the retry is the better deal.
 enum HealthKitDeliveryProcessor {
 
     /// Processes one background delivery day by day and acknowledges it exactly once, afterwards.
+    ///
+    /// Each day that reads cleanly is reported on its own. Days that fail collapse into a
+    /// single failure for the whole delivery, so one broken read cannot flood the subscriber
+    /// with a callback per day.
     ///
     /// - Parameters:
     ///   - dates: The days to re-read for this delivery, reported in order.
@@ -26,14 +36,21 @@ enum HealthKitDeliveryProcessor {
         report: @Sendable (Result<Activity?, any Error>) -> Void,
         acknowledge: @Sendable () -> Void
     ) async {
+        var firstFailure: (any Error)?
+
         for date in dates {
             do {
                 let activity = try await read(date)
                 report(.success(activity))
             } catch {
-                report(.failure(error))
+                firstFailure = firstFailure ?? error
             }
         }
+
+        if let firstFailure {
+            report(.failure(firstFailure))
+        }
+
         acknowledge()
     }
 

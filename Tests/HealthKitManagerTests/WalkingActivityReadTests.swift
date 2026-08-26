@@ -210,6 +210,23 @@ struct WalkingActivityReadTests {
             acknowledge: { log.append("acknowledge") }
         )
 
-        #expect(log.all == ["report-failure", "report-success", "acknowledge"])
+        #expect(log.all == ["report-success", "report-failure", "acknowledge"])
+    }
+
+    @Test func deliveryReportsAtMostOneFailureRegardlessOfHowManyDaysFailed() async {
+        let log = DeliveryLog()
+
+        await HealthKitDeliveryProcessor.processDelivery(
+            dates: [Date(timeIntervalSinceReferenceDate: 0), Date(timeIntervalSinceReferenceDate: 86_400)],
+            read: { _ -> WalkingActivityData in throw MetricFailure() },
+            report: { outcome in
+                if case .failure = outcome {
+                    log.append("report-failure")
+                }
+            },
+            acknowledge: { log.append("acknowledge") }
+        )
+
+        #expect(log.all == ["report-failure", "acknowledge"])
     }
 }

@@ -9,10 +9,9 @@ internal class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore = HKHealthStore()
     internal var walkingActivityAnchoredQuery: HKAnchoredObjectQuery?
-    internal let walkingActivityObserverLock = NSLock()
-    internal var walkingActivityObserverQuery: HKObserverQuery?
-    internal var walkingActivitySubscriber: (@Sendable (Result<WalkingActivityData?, Error>) -> Void)?
-    internal var walkingActivityObserverConsecutiveFailures = 0
+    internal let walkingActivityObservation = HealthKitObservationCoordinator<WalkingActivityData>()
+    private let backgroundTypesLock = NSLock()
+    private var enabledWalkingActivityBackgroundTypes: Set<HKQuantityType>?
     
     internal var sleepActivityObserverQuery: HKObserverQuery?
     internal var mindfulActivityObserverQuery: HKObserverQuery?
@@ -31,6 +30,25 @@ internal class HealthKitManager: @unchecked Sendable {
         HKQuantityType(.activeEnergyBurned),
     ]
     
+    /// The walking types currently enabled for background delivery, falling back to the
+    /// package defaults until the caller enables an explicit set. The observer registers
+    /// exactly these, so no enabled type can deliver without a handler to acknowledge it.
+    internal var walkingActivityBackgroundTypes: Set<HKQuantityType> {
+        backgroundTypesLock.withLock { enabledWalkingActivityBackgroundTypes ?? forWalkingActivityQuantityType }
+    }
+
+    internal var walkingActivityBackgroundSampleTypes: Set<HKSampleType> {
+        Set(walkingActivityBackgroundTypes.map { $0 as HKSampleType })
+    }
+
+    /// Records which walking types background delivery was last enabled for, so the
+    /// observer and the reads follow the same set.
+    ///
+    /// - Parameter types: The enabled types, or `nil` once delivery is disabled.
+    internal func rememberWalkingActivityBackgroundTypes(_ types: Set<HKQuantityType>?) {
+        backgroundTypesLock.withLock { enabledWalkingActivityBackgroundTypes = types }
+    }
+
     internal let forDietaryNutritionQuantityType: Set = [
         HKQuantityType(.dietaryEnergyConsumed),
         HKQuantityType(.dietaryFatTotal),

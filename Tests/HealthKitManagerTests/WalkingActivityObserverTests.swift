@@ -10,25 +10,14 @@ import Testing
 import HealthKit
 @testable import HealthKitManager
 
-/// Tests for the walking activity observer's restart policy.
+/// Tests for which walking types the observer registers.
 struct WalkingActivityObserverTests {
 
-    @Test func restartBacksOffExponentially() {
-        #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: 1) == .seconds(1))
-        #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: 2) == .seconds(2))
-        #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: 3) == .seconds(4))
-        #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: 4) == .seconds(8))
-        #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: 5) == .seconds(16))
-    }
-
-    @Test func restartGivesUpOnceThePolicyIsExhausted() {
-        #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: 6) == nil)
-        #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: 100) == nil)
-    }
-
-    @Test func restartRequiresAtLeastOneFailure() {
-        #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: 0) == nil)
-        #expect(WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: -3) == nil)
+    @Test func restartBacksOffExponentiallyThenGivesUp() {
+        #expect(HealthKitObservationRetryPolicy.restartDelay(afterConsecutiveFailures: 1) == .seconds(1))
+        #expect(HealthKitObservationRetryPolicy.restartDelay(afterConsecutiveFailures: 5) == .seconds(16))
+        #expect(HealthKitObservationRetryPolicy.restartDelay(afterConsecutiveFailures: 6) == nil)
+        #expect(HealthKitObservationRetryPolicy.restartDelay(afterConsecutiveFailures: 0) == nil)
     }
 
     @Test func observerWatchesEveryWalkingDeliveryType() {

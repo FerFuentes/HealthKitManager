@@ -95,48 +95,53 @@ internal extension HealthKitManager {
     ///
     /// Every background delivery is acknowledged after its processing finishes, on success
     /// and failure alike, so iOS never counts a delivery as missed and keeps waking the app.
-    /// A failing observer query is re-registered with a bounded exponential backoff instead
-    /// of going dark or spinning a hot register/error loop.
     ///
     /// - Parameters:
     ///   - start: `true` to start observing, `false` to stop.
     ///   - completion: A closure called when walking activity data changes.
     ///                 Returns `Result<WalkingActivityData?, Error>`.
     ///
-    /// - Note: Enable background delivery using `enableBackgroundWalkingActivityUpdates(enabled:)`
+    /// - Important: One delivery reports **twice**: the previous day first, then the current
+    ///   day. Callers that submit what they receive must expect two callbacks per delivery
+    ///   and decide separately what to do with the previous day.
+    /// - Note: Transient observer failures are retried internally with backoff and never
+    ///   reach `completion`. When the retries run out, observation stops and delivers
+    ///   `HealthKitObservationError.observationStopped(afterConsecutiveFailures:lastError:)`
+    ///   once; observing again re-arms it.
+    /// - Note: Enable background delivery using `setBackgroundWalkingActivityUpdates(enabled:toRead:)`
     ///         to receive updates when the app is in the background.
     func observeWalkingActivityQuery(
         _ start: Bool,
         completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
     ) {
-        walkingActivityObserverLock.withLock {
-            if start {
-                guard walkingActivitySubscriber == nil else { return }
-                walkingActivitySubscriber = completion
-                walkingActivityObserverConsecutiveFailures = 0
-                registerWalkingActivityObserver()
-            } else {
-                walkingActivitySubscriber = nil
-                haltWalkingActivityObserver()
-            }
+        if start {
+            walkingActivityObservation.startObserving(
+                subscriber: completion,
+                register: { [weak self] in self?.executeWalkingActivityObserverQuery() },
+                halt: { [weak self] query in
+                    guard let self, let query = query as? HKObserverQuery else { return }
+                    self.healthStore.stop(query)
+                }
+            )
+        } else {
+            walkingActivityObservation.stopObserving()
         }
     }
 
-    /// The query descriptors the walking observer registers: one per metric type the
-    /// package enables for background delivery by default, so no delivery ever arrives
-    /// without an observer to process and acknowledge it.
+    /// The query descriptors the walking observer registers: one per metric type currently
+    /// enabled for background delivery, so no delivery ever arrives without an observer to
+    /// process and acknowledge it.
     func walkingActivityObserverDescriptors() -> [HKQueryDescriptor] {
         let predicate = getPredicateForWalkingActivityAnchorQuery()
-        return forWalkingActivityQuantityType.map {
+        return walkingActivityBackgroundTypes.map {
             HKQueryDescriptor(sampleType: $0, predicate: predicate)
         }
     }
 
-    /// Registers the observer query whose handler acknowledges the current delivery on
-    /// every path. Callers must hold `walkingActivityObserverLock`.
-    private func registerWalkingActivityObserver() {
+    /// Registers the observer query whose handler acknowledges the current delivery on every path.
+    private func executeWalkingActivityObserverQuery() -> HKObserverQuery {
         let query = HKObserverQuery(
-            queryDescriptors: walkingActivityObserverDescriptors()) { [weak self] _, _, deliveryCompletionHandler, error in
+            queryDescriptors: walkingActivityObserverDescriptors()) { [weak self] query, _, deliveryCompletionHandler, error in
                 nonisolated(unsafe) let acknowledgeDelivery = deliveryCompletionHandler
 
                 guard let self = self else {
@@ -144,23 +149,25 @@ internal extension HealthKitManager {
                     return
                 }
 
-                guard let subscriber = self.walkingActivityObserverLock.withLock({ self.walkingActivitySubscriber }) else {
-                    acknowledgeDelivery()
+                if let error = error {
+                    switch self.walkingActivityObservation.handling(forFailedDeliveryFrom: query, error: error) {
+                    case .retrySilently:
+                        acknowledgeDelivery()
+                    case .reportTerminal(let terminal, let subscriber):
+                        acknowledgeDelivery()
+                        subscriber(.failure(terminal))
+                    }
                     return
                 }
 
-                if let error = error {
+                switch self.walkingActivityObservation.handling(forDeliveryFrom: query) {
+                case .ignore:
                     acknowledgeDelivery()
-                    self.scheduleWalkingActivityObserverRestart()
-                    subscriber(.failure(error))
-                } else {
-                    self.walkingActivityObserverLock.withLock {
-                        self.walkingActivityObserverConsecutiveFailures = 0
-                    }
+                case .process(let subscriber):
                     Task {
                         await HealthKitDeliveryProcessor.processDelivery(
                             dates: HealthKitDeliveryProcessor.deliveryDates(endingAt: Date()),
-                            read: { date in try await self.readWalkingActivityMetrics(date: date, sampleTypes: self.forWalkingActivityQuantityType) },
+                            read: { date in try await self.readWalkingActivityMetrics(date: date, sampleTypes: self.walkingActivityBackgroundSampleTypes) },
                             report: subscriber,
                             acknowledge: { acknowledgeDelivery() }
                         )
@@ -169,35 +176,7 @@ internal extension HealthKitManager {
             }
 
         healthStore.execute(query)
-        walkingActivityObserverQuery = query
-    }
-
-    /// Stops and releases the active observer query. Callers must hold `walkingActivityObserverLock`.
-    private func haltWalkingActivityObserver() {
-        guard let query = walkingActivityObserverQuery else { return }
-        healthStore.stop(query)
-        walkingActivityObserverQuery = nil
-    }
-
-    /// Stops the failed observer and re-registers it after a bounded backoff, giving up
-    /// once the retry policy is exhausted, and never re-registering after the subscriber
-    /// stopped observing.
-    private func scheduleWalkingActivityObserverRestart() {
-        let restartDelay: Duration? = walkingActivityObserverLock.withLock {
-            haltWalkingActivityObserver()
-            walkingActivityObserverConsecutiveFailures += 1
-            return WalkingActivityObserverRetryPolicy.restartDelay(afterConsecutiveFailures: walkingActivityObserverConsecutiveFailures)
-        }
-
-        guard let restartDelay else { return }
-
-        Task {
-            try? await Task.sleep(for: restartDelay)
-            walkingActivityObserverLock.withLock {
-                guard walkingActivitySubscriber != nil, walkingActivityObserverQuery == nil else { return }
-                registerWalkingActivityObserver()
-            }
-        }
+        return query
     }
 
     /// Reads walking activity for a date, requesting authorization first and
