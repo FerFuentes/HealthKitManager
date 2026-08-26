@@ -10,85 +10,10 @@ import HealthKit
 
 internal extension HealthKitManager {
 
-    func getPredicateForWalkingActivityAnchorQuery() -> NSCompoundPredicate {
+    /// Excludes manually entered samples, which the app must never credit as measured activity.
+    func walkingActivityObserverPredicate() -> NSCompoundPredicate {
         let excludeManual = NSPredicate(format: "metadata.%K != YES", HKMetadataKeyWasUserEntered)
         return NSCompoundPredicate(andPredicateWithSubpredicates: [excludeManual])
-    }
-
-    var walkingActivityAnchorQuery: HKQueryAnchor? {
-        get {
-            if let anchorData = UserDefaults.standard.data(forKey: "walkingActivityAnchor") {
-                return try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: anchorData)
-            }
-            return nil
-        }
-        set {
-            if let newAnchor = newValue {
-                let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: newAnchor, requiringSecureCoding: true)
-                UserDefaults.standard.set(anchorData, forKey: "walkingActivityAnchor")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "walkingActivityAnchor")
-            }
-        }
-    }
-
-    func walkingActivityAnchoredObjectQuery(
-        _ start: Bool,
-        toRead: Set<HKQuantityType>,
-        completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void
-    ) {
-        if start {
-            guard (walkingActivityAnchoredQuery == nil) else {
-                return
-            }
-
-            let predicate = getPredicateForWalkingActivityAnchorQuery()
-            let queryDescriptors = toRead.map {
-                HKQueryDescriptor(sampleType: $0, predicate: predicate)
-            }
-
-            let handleSamples: @Sendable (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { [weak self] _, samples, _, newAnchor, error in
-                guard let self = self else { return }
-
-                if let error = error {
-                    completion(.failure(error))
-                    return
-                }
-
-                guard let samples = samples, !samples.isEmpty else {
-                    completion(.success(nil))
-                    return
-                }
-
-                Task {
-                    self.walkingActivityAnchorQuery = newAnchor
-
-                    do {
-                        let activity = try await self.readWalkingActivityMetrics(date: Date(), sampleTypes: self.forWalkingActivityQuantityType)
-                        completion(.success(activity))
-                    } catch {
-                        completion(.failure(error))
-                    }
-                }
-            }
-
-            let query = HKAnchoredObjectQuery(
-                queryDescriptors: queryDescriptors,
-                anchor: walkingActivityAnchorQuery,
-                limit: HKObjectQueryNoLimit,
-                resultsHandler: handleSamples
-            )
-
-            query.updateHandler = handleSamples
-            healthStore.execute(query)
-
-            walkingActivityAnchoredQuery = query
-        } else {
-            if let query = walkingActivityAnchoredQuery {
-                healthStore.stop(query)
-                walkingActivityAnchoredQuery = nil
-            }
-        }
     }
 
     /// Starts or stops observing walking activity changes using HKObserverQuery.
@@ -131,7 +56,7 @@ internal extension HealthKitManager {
     /// enabled for background delivery, so no delivery ever arrives without an observer to
     /// process and acknowledge it.
     func walkingActivityObserverDescriptors() -> [HKQueryDescriptor] {
-        let predicate = getPredicateForWalkingActivityAnchorQuery()
+        let predicate = walkingActivityObserverPredicate()
         return walkingActivityBackgroundTypes.map {
             HKQueryDescriptor(sampleType: $0, predicate: predicate)
         }

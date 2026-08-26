@@ -8,7 +8,6 @@ import HealthKit
 internal class HealthKitManager: @unchecked Sendable {
     
     private(set) var healthStore: HKHealthStore = HKHealthStore()
-    internal var walkingActivityAnchoredQuery: HKAnchoredObjectQuery?
     internal let walkingActivityObservation = HealthKitObservationCoordinator<WalkingActivityData>()
     private let backgroundTypesLock = NSLock()
     private var enabledWalkingActivityBackgroundTypes: Set<HKQuantityType>?
