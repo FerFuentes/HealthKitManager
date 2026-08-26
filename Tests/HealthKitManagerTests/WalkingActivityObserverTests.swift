@@ -20,11 +20,17 @@ struct WalkingActivityObserverTests {
         #expect(HealthKitObservationRetryPolicy.restartDelay(afterConsecutiveFailures: 0) == nil)
     }
 
-    @Test func observerWatchesEveryWalkingDeliveryType() {
+    @Test func observerWatchesExactlyTheTypesEnabledForDelivery() {
         let manager = HealthKitManager.shared
-        let observed = Set(manager.walkingActivityObserverDescriptors().map(\.sampleType))
-        let enabled = Set(manager.forWalkingActivityQuantityType.map { $0 as HKSampleType })
+        defer { manager.rememberWalkingActivityBackgroundTypes(nil) }
 
-        #expect(observed == enabled)
+        manager.rememberWalkingActivityBackgroundTypes(nil)
+        #expect(Set(manager.walkingActivityObserverDescriptors().map(\.sampleType)) == Set(manager.forWalkingActivityQuantityType.map { $0 as HKSampleType }))
+
+        manager.rememberWalkingActivityBackgroundTypes([HKQuantityType(.stepCount), HKQuantityType(.distanceWalkingRunning)])
+        let observed = Set(manager.walkingActivityObserverDescriptors().map(\.sampleType))
+
+        #expect(observed == Set([HKQuantityType(.stepCount) as HKSampleType, HKQuantityType(.distanceWalkingRunning) as HKSampleType]))
+        #expect(!observed.contains(HKQuantityType(.heartRate) as HKSampleType))
     }
 }

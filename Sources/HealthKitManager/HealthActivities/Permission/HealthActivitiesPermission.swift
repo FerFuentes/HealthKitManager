@@ -11,6 +11,12 @@ import HealthKit
 ///
 /// Conform to this protocol to request HealthKit permissions and enable/disable
 /// background delivery for various health data types.
+///
+/// - Important: Enabling background delivery never presents the permission sheet. Request
+///   authorization first with `statusForHealthKitAuthorizationRequest(toWrite:toRead:)`
+///   from a user-initiated flow; enabling before that throws
+///   `Permission.Error.needToRequestPermission`, and the caller should enable again once
+///   the user has granted access.
 public protocol HealthActivitiesPermission {
     /// Requests HealthKit authorization for the specified types.
     /// - Parameters:
@@ -24,48 +30,64 @@ public protocol HealthActivitiesPermission {
     func isAuthorizationRequestNeeded(for type: HKObjectType) throws -> Bool
     
     // MARK: - Background Delivery Methods
-    
-    /// Enables or disables background delivery for walking activity updates.
-    /// - Parameters:
-    ///   - enabled: `true` to enable, `false` to disable.
-    ///   - toRead: Optional set of quantity types. Defaults to steps, heart rate, distance, and calories.
-    @available(*, deprecated, message: "Swallows failures; use setBackgroundWalkingActivityUpdates(enabled:toRead:) instead.")
-    func enableBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async
 
-    /// Enables or disables background delivery for walking activity updates, surfacing failures.
+    /// Enables or disables background delivery for walking activity updates.
     ///
-    /// Never presents the permission sheet: authorization must be established beforehand,
-    /// or `Permission.Error.needToRequestPermission` is thrown.
+    /// The enabled types are also the ones the walking observer watches, so a type enabled
+    /// here always has a handler to acknowledge its deliveries.
     ///
     /// - Parameters:
     ///   - enabled: `true` to enable, `false` to disable.
     ///   - toRead: Optional set of quantity types. Defaults to steps, heart rate, distance, and calories.
-    /// - Throws: A `Permission.Error` when authorization is not established, or the first
-    ///   `HKHealthStore` failure while toggling a type.
+    /// - Throws: `Permission.Error` when authorization is not established, or
+    ///   ``BackgroundDeliveryError`` naming the types that could not be toggled.
     func setBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async throws
-    
+
     /// Enables or disables background delivery for sleep activity updates.
     /// - Parameter enabled: `true` to enable, `false` to disable.
-    func enableBackgroundSleepActivityUpdates(enabled: Bool) async
-    
+    /// - Throws: `Permission.Error` or ``BackgroundDeliveryError``.
+    func setBackgroundSleepActivityUpdates(enabled: Bool) async throws
+
     /// Enables or disables background delivery for mindful activity updates.
     /// - Parameter enabled: `true` to enable, `false` to disable.
-    func enableBackgroundMindfulActivityUpdates(enabled: Bool) async
-    
+    /// - Throws: `Permission.Error` or ``BackgroundDeliveryError``.
+    func setBackgroundMindfulActivityUpdates(enabled: Bool) async throws
+
     /// Enables or disables background delivery for nutrition updates.
     /// - Parameters:
     ///   - enabled: `true` to enable, `false` to disable.
     ///   - toRead: Optional set of quantity types. Defaults to calories, carbs, protein, and fat.
-    func enableBackgroundNutritionUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async
-    
+    /// - Throws: `Permission.Error` or ``BackgroundDeliveryError``.
+    func setBackgroundNutritionUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async throws
+
     /// Enables or disables background delivery for heart rate updates.
     /// - Parameters:
     ///   - enabled: `true` to enable, `false` to disable.
     ///   - toRead: Optional set of quantity types. Defaults to heart rate and resting heart rate.
-    func enableBackgroundHeartRateUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async
-    
+    /// - Throws: `Permission.Error` or ``BackgroundDeliveryError``.
+    func setBackgroundHeartRateUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async throws
+
     /// Enables or disables background delivery for workout updates.
     /// - Parameter enabled: `true` to enable, `false` to disable.
+    /// - Throws: `Permission.Error` or ``BackgroundDeliveryError``.
+    func setBackgroundWorkoutsUpdates(enabled: Bool) async throws
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundWalkingActivityUpdates(enabled:toRead:) instead.")
+    func enableBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundSleepActivityUpdates(enabled:) instead.")
+    func enableBackgroundSleepActivityUpdates(enabled: Bool) async
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundMindfulActivityUpdates(enabled:) instead.")
+    func enableBackgroundMindfulActivityUpdates(enabled: Bool) async
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundNutritionUpdates(enabled:toRead:) instead.")
+    func enableBackgroundNutritionUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundHeartRateUpdates(enabled:toRead:) instead.")
+    func enableBackgroundHeartRateUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundWorkoutsUpdates(enabled:) instead.")
     func enableBackgroundWorkoutsUpdates(enabled: Bool) async
 }
 
@@ -80,7 +102,41 @@ extension HealthActivitiesPermission {
     }
     
     // MARK: - Background Delivery Methods
-    
+
+    public func setBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async throws {
+        let manager = HealthKitManager.shared
+        let types = toRead ?? manager.forWalkingActivityQuantityType
+        try await manager.setBackgroundDelivery(enable: enabled, types: Set(types.map { $0 as HKSampleType }))
+        manager.rememberWalkingActivityBackgroundTypes(enabled ? types : nil)
+    }
+
+    public func setBackgroundSleepActivityUpdates(enabled: Bool) async throws {
+        let manager = HealthKitManager.shared
+        try await manager.setBackgroundDelivery(enable: enabled, types: manager.forSleepActivityCategoryType)
+    }
+
+    public func setBackgroundMindfulActivityUpdates(enabled: Bool) async throws {
+        let manager = HealthKitManager.shared
+        try await manager.setBackgroundDelivery(enable: enabled, types: manager.forMindfulActivityCategoryType)
+    }
+
+    public func setBackgroundNutritionUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async throws {
+        let manager = HealthKitManager.shared
+        let types = toRead ?? manager.forDietaryNutritionQuantityType
+        try await manager.setBackgroundDelivery(enable: enabled, types: Set(types.map { $0 as HKSampleType }))
+    }
+
+    public func setBackgroundHeartRateUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async throws {
+        let manager = HealthKitManager.shared
+        let types = toRead ?? manager.forHeartRateQuantityType
+        try await manager.setBackgroundDelivery(enable: enabled, types: Set(types.map { $0 as HKSampleType }))
+    }
+
+    public func setBackgroundWorkoutsUpdates(enabled: Bool) async throws {
+        let manager = HealthKitManager.shared
+        try await manager.setBackgroundDelivery(enable: enabled, types: manager.forWorkoutsSampleType)
+    }
+
     @available(*, deprecated, message: "Swallows failures; use setBackgroundWalkingActivityUpdates(enabled:toRead:) instead.")
     public func enableBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async {
         do {
@@ -90,51 +146,46 @@ extension HealthActivitiesPermission {
         }
     }
 
-    public func setBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async throws {
-        let manager = HealthKitManager.shared
-        try await manager.setBackgroundDelivery(enable: enabled, types: toRead ?? manager.forWalkingActivityQuantityType)
-    }
-    
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundSleepActivityUpdates(enabled:) instead.")
     public func enableBackgroundSleepActivityUpdates(enabled: Bool) async {
-        let manager = HealthKitManager.shared
         do {
-            try await manager.setBackgroundDelivery(enable: enabled, types: manager.forSleepActivityCategoryType)
+            try await setBackgroundSleepActivityUpdates(enabled: enabled)
         } catch {
             debugPrint("Error updating sleep activity background delivery: \(error.localizedDescription)")
         }
     }
-    
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundMindfulActivityUpdates(enabled:) instead.")
     public func enableBackgroundMindfulActivityUpdates(enabled: Bool) async {
-        let manager = HealthKitManager.shared
         do {
-            try await manager.setBackgroundDelivery(enable: enabled, types: manager.forMindfulActivityCategoryType)
+            try await setBackgroundMindfulActivityUpdates(enabled: enabled)
         } catch {
             debugPrint("Error updating mindful activity background delivery: \(error.localizedDescription)")
         }
     }
-    
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundNutritionUpdates(enabled:toRead:) instead.")
     public func enableBackgroundNutritionUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async {
-        let manager = HealthKitManager.shared
         do {
-            try await manager.setBackgroundDelivery(enable: enabled, types: toRead ?? manager.forDietaryNutritionQuantityType)
+            try await setBackgroundNutritionUpdates(enabled: enabled, toRead: toRead)
         } catch {
             debugPrint("Error updating nutrition background delivery: \(error.localizedDescription)")
         }
     }
-    
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundHeartRateUpdates(enabled:toRead:) instead.")
     public func enableBackgroundHeartRateUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async {
-        let manager = HealthKitManager.shared
         do {
-            try await manager.setBackgroundDelivery(enable: enabled, types: toRead ?? manager.forHeartRateQuantityType)
+            try await setBackgroundHeartRateUpdates(enabled: enabled, toRead: toRead)
         } catch {
             debugPrint("Error updating heart rate background delivery: \(error.localizedDescription)")
         }
     }
-    
+
+    @available(*, deprecated, message: "Swallows failures; use setBackgroundWorkoutsUpdates(enabled:) instead.")
     public func enableBackgroundWorkoutsUpdates(enabled: Bool) async {
-        let manager = HealthKitManager.shared
         do {
-            try await manager.setBackgroundDelivery(enable: enabled, types: manager.forWorkoutsSampleType)
+            try await setBackgroundWorkoutsUpdates(enabled: enabled)
         } catch {
             debugPrint("Error updating workouts background delivery: \(error.localizedDescription)")
         }

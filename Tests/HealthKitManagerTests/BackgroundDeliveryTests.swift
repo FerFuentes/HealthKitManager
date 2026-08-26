@@ -14,6 +14,8 @@ import HealthKit
 /// present the permission sheet from app-startup paths.
 struct BackgroundDeliveryTests {
 
+    private struct MetricFailure: Error {}
+
     @Test func establishedAuthorizationPassesWhenRequestIsUnnecessary() throws {
         try HealthKitManager.requireEstablishedAuthorization(.unnecessary)
     }
@@ -26,6 +28,21 @@ struct BackgroundDeliveryTests {
         } catch {
             Issue.record("Expected needToRequestPermission, got \(error)")
         }
+    }
+
+    @Test func toggleFailuresNameEveryTypeThatKeptItsPreviousState() {
+        let failure = BackgroundDeliveryError(failures: [
+            (HKQuantityType(.stepCount), MetricFailure()),
+            (HKQuantityType(.heartRate), MetricFailure())
+        ])
+
+        #expect(failure?.failedTypeIdentifiers.contains(HKQuantityTypeIdentifier.stepCount.rawValue) == true)
+        #expect(failure?.failedTypeIdentifiers.contains(HKQuantityTypeIdentifier.heartRate.rawValue) == true)
+        #expect(failure?.underlying.count == 2)
+    }
+
+    @Test func aFullySuccessfulToggleIsNotAnError() {
+        #expect(BackgroundDeliveryError(failures: []) == nil)
     }
 
     @Test func establishedAuthorizationRejectsAnUnknownStatus() {

@@ -212,29 +212,41 @@ internal class HealthKitManager: @unchecked Sendable {
 
     /// Enables or disables hourly background delivery for the given sample types.
     ///
-    /// Authorization must already be established: this never presents the permission sheet,
-    /// because it runs from app-startup paths where no user action happened.
+    /// Enabling requires authorization to be established already: this never presents the
+    /// permission sheet, because it runs from app-startup paths where no user action
+    /// happened. Disabling is always attempted, even when HealthKit reports itself
+    /// unavailable, so teardown can never be blocked.
+    ///
+    /// Every type is attempted; the failures are collected rather than aborting the set
+    /// half-toggled.
     ///
     /// - Parameters:
     ///   - enable: `true` to enable delivery, `false` to disable it.
     ///   - types: The sample types to toggle.
-    /// - Throws: A `Permission.Error` when HealthKit is unavailable or authorization was
-    ///   never requested, or the first `HKHealthStore` failure while toggling a type.
+    /// - Throws: A `Permission.Error` when enabling without established authorization, or
+    ///   ``BackgroundDeliveryError`` naming the types that could not be toggled.
     internal func setBackgroundDelivery(enable: Bool, types: Set<HKSampleType>) async throws {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            throw Permission.Error.unavailable
-        }
-
         if enable {
             try await requireEstablishedAuthorization(toRead: types)
-            for type in types {
-                try await healthStore.enableBackgroundDelivery(for: type, frequency: .hourly)
-            }
-        } else {
-            for type in types {
-                try await healthStore.disableBackgroundDelivery(for: type)
+        }
+
+        var failures: [(type: HKSampleType, error: any Error)] = []
+        for type in types {
+            do {
+                if enable {
+                    try await healthStore.enableBackgroundDelivery(for: type, frequency: .hourly)
+                } else {
+                    try await healthStore.disableBackgroundDelivery(for: type)
+                }
+            } catch {
+                failures.append((type, error))
             }
         }
+
+        if let failure = BackgroundDeliveryError(failures: failures) {
+            throw failure
+        }
     }
+
     
 }
