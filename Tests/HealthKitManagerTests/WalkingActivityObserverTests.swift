@@ -38,25 +38,11 @@ struct WalkingActivityObserverTests {
         #expect(!observed.contains(HKQuantityType(.heartRate) as HKSampleType))
     }
 
-    @Test func theDeliveryReadIsTheWalkingPayloadAndNeverTheSetThatWokeIt() {
-        let manager = HealthKitManager.shared
-        defer { manager.rememberWalkingActivityBackgroundTypes(nil) }
-
-        let payload = Set([
-            HKQuantityType(.stepCount) as HKSampleType,
-            HKQuantityType(.distanceWalkingRunning) as HKSampleType,
-            HKQuantityType(.activeEnergyBurned) as HKSampleType
-        ])
-
-        manager.rememberWalkingActivityBackgroundTypes([HKQuantityType(.stepCount)])
-        #expect(HealthKitManager.walkingActivityDeliverySampleTypes == payload)
-        #expect(Set(manager.walkingActivityObserverDescriptors().map(\.sampleType)) != HealthKitManager.walkingActivityDeliverySampleTypes)
-
-        manager.rememberWalkingActivityBackgroundTypes([HKQuantityType(.heartRate)])
-        #expect(HealthKitManager.walkingActivityDeliverySampleTypes == payload)
-    }
-
-    @Test func theDeliveryReadStaysDerivedFromTheWalkingTypesMinusHeartRate() {
+    /// Pins the composition of the delivery payload constant. Which set the delivery read
+    /// actually passes is not covered here — that line only runs against a live health store —
+    /// so it is held structurally instead: `readWalkingActivityDelivery` takes no sample-type
+    /// parameter, leaving nothing for a caller to pass it.
+    @Test func theDeliveryPayloadIsTheWalkingTypesWithoutHeartRate() {
         #expect(HealthKitManager.walkingActivityDeliverySampleTypes
             == Set(HealthKitManager.forWalkingActivityQuantityType.subtracting([HKQuantityType(.heartRate)]).map { $0 as HKSampleType }))
         #expect(!HealthKitManager.walkingActivityDeliverySampleTypes.contains(HKQuantityType(.heartRate) as HKSampleType))

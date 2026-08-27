@@ -81,13 +81,29 @@ enum WalkingActivityReadAggregator {
     /// is missing would lose the steps that are the point of the delivery, and a metric the
     /// member has switched off in Health is absent on every delivery, forever.
     ///
+    /// Steps absent and steps *unreadable* are not the same answer, and only the aggregated
+    /// value cannot tell them apart — both arrive as `nil`. The outcome is what decides: a
+    /// steps read that threw is reported as the failure it was, rather than passed off as a
+    /// day nobody walked, which is the confusion ``WalkingActivityData`` exists to prevent.
+    ///
+    /// - Note: A member whose device records distance or calories but no steps — a wheelchair
+    ///   user, or a treadmill source that writes distance only — has nothing posted by a
+    ///   delivery. That is deliberate, not an oversight: steps are the unit the day is
+    ///   promoted on, and there is nothing to promote without them.
+    ///
     /// - Parameters:
     ///   - date: The day the metrics were read for.
     ///   - outcomes: The result of every attempted metric read.
-    /// - Returns: The walking activity, or `nil` when its steps could not be read.
-    /// - Throws: Whatever ``aggregate(date:outcomes:)`` throws.
+    /// - Returns: The walking activity, or `nil` when the day genuinely has no steps.
+    /// - Throws: Whatever ``aggregate(date:outcomes:)`` throws, or the steps read's own failure
+    ///   when steps could not be read.
     static func deliveryActivity(date: Date, outcomes: [WalkingMetric: Result<Double?, any Error>]) throws -> WalkingActivityData? {
         let activity = try aggregate(date: date, outcomes: outcomes)
+
+        if case .failure(let stepsFailure)? = outcomes[.steps] {
+            throw stepsFailure
+        }
+
         return activity.steps == nil ? nil : activity
     }
 

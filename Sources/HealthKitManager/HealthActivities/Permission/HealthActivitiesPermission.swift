@@ -38,6 +38,18 @@ public protocol HealthActivitiesPermission {
     /// app**, not what a delivery reads: every delivery reads the whole walking payload, so
     /// narrowing these never narrows what gets posted.
     ///
+    /// Enabling clears every background delivery first, so the store ends up matching the
+    /// requested set exactly rather than accumulating whatever a previous version enabled.
+    /// That clear is store-wide, which is safe while walking is the only delivery this app
+    /// turns on; a caller that also enables sleep, nutrition or workouts must enable walking
+    /// before those, not after.
+    ///
+    /// - Important: The caller must have requested authorization for the whole walking
+    ///   payload — steps, distance and calories — not only for the types it wakes on. A
+    ///   delivery reads the payload regardless of what woke it, and HealthKit answers a read
+    ///   it was never authorized for with no samples rather than an error, so the shortfall
+    ///   would surface as permanently empty days rather than as a failure.
+    ///
     /// - Parameters:
     ///   - enabled: `true` to enable, `false` to disable.
     ///   - toRead: Optional set of quantity types to wake on. Defaults to steps, heart rate,
@@ -111,6 +123,11 @@ extension HealthActivitiesPermission {
     public func setBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async throws {
         let manager = HealthKitManager.shared
         let types = toRead ?? HealthKitManager.forWalkingActivityQuantityType
+
+        if enabled {
+            try await manager.disableAllBackgroundDelivery()
+        }
+
         try await manager.setBackgroundDelivery(enable: enabled, types: Set(types.map { $0 as HKSampleType }))
         manager.rememberWalkingActivityBackgroundTypes(enabled ? types : nil)
     }

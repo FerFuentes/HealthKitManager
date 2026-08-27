@@ -278,7 +278,7 @@ struct WalkingActivityReadTests {
         #expect(activity?.steps == 0)
     }
 
-    @Test func aRequestedDayThatIsGenuinelyEmptyStillAggregatesToZeros() throws {
+    @Test func aRequestedDayThatIsGenuinelyEmptyKeepsItsAbsentValues() throws {
         let requested = try WalkingActivityReadAggregator.aggregate(
             date: Date(),
             outcomes: [.steps: .success(nil), .distanceMeters: .success(nil)]
@@ -337,6 +337,22 @@ struct WalkingActivityReadTests {
         #expect(activity?.steps == 4_200)
         #expect(activity?.activeCalories == 180)
         #expect(activity?.distanceMeters == nil)
+    }
+
+    @Test func aStepsReadThatFailedIsAFailureAndNeverAQuietDay() {
+        do {
+            let activity = try WalkingActivityReadAggregator.deliveryActivity(
+                date: Date(),
+                outcomes: [
+                    .steps: .failure(MetricFailure()),
+                    .distanceMeters: .success(3_100)
+                ]
+            )
+            Issue.record("Expected the steps failure to surface, got \(String(describing: activity))")
+        } catch is MetricFailure {
+        } catch {
+            Issue.record("Expected MetricFailure, got \(error)")
+        }
     }
 
     @Test func aMetricThatFailedDoesNotSuppressTheStepsThatRead() throws {

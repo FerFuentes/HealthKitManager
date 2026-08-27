@@ -219,6 +219,18 @@ internal class HealthKitManager: @unchecked Sendable {
         try Self.requireEstablishedAuthorization(status)
     }
 
+    /// Clears every background delivery this app has enabled at the health store.
+    ///
+    /// The enable path runs this first so the store ends up matching exactly what the caller
+    /// asked for. Narrowing the requested set otherwise leaves the types dropped from it still
+    /// enabled and now unwatched, and iOS wakes the app three times for each before giving up
+    /// on them — wake-ups spent on samples nothing is listening for.
+    ///
+    /// - Throws: Whatever HealthKit reports when the store cannot be changed.
+    internal func disableAllBackgroundDelivery() async throws {
+        try await healthStore.disableAllBackgroundDelivery()
+    }
+
     /// Enables or disables hourly background delivery for the given sample types.
     ///
     /// Enabling requires authorization to be established already: this never presents the

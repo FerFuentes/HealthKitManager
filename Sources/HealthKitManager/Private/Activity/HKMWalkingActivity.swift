@@ -62,8 +62,9 @@ internal extension HealthKitManager {
     /// that woke the delivery and truncate the payload back down to it.
     ///
     /// - Parameter date: The day the delivery woke on.
-    /// - Returns: The day's walking activity, or `nil` when no metric was read at all.
-    /// - Throws: ``WalkingActivityReadError`` when the read cannot be trusted.
+    /// - Returns: The day's walking activity, or `nil` when the day genuinely has no steps.
+    /// - Throws: ``WalkingActivityReadError`` when the read cannot be trusted, or the steps
+    ///   read's own failure when steps could not be read.
     func readWalkingActivityDelivery(date: Date) async throws -> WalkingActivityData? {
         try WalkingActivityReadAggregator.deliveryActivity(
             date: date,
