@@ -20,15 +20,14 @@ internal extension HealthKitManager {
     ///   - start: `true` to start observing, `false` to stop.
     ///   - coordinator: Owns this observation's lifecycle state.
     ///   - descriptors: The query descriptors to register, evaluated at each registration.
-    ///   - deliveryDates: The days one delivery must re-read.
-    ///   - read: Produces the activity for one of those days.
+    ///   - read: Produces the activity for the day a delivery woke on, or `nil` when that
+    ///     day has nothing to report.
     ///   - completion: Receives every outcome until observation stops.
     func observeQuery<Activity: Sendable>(
         _ start: Bool,
         coordinator: HealthKitObservationCoordinator<Activity>,
         descriptors: @escaping @Sendable () -> [HKQueryDescriptor],
-        deliveryDates: @escaping @Sendable () -> [Date] = { [Date()] },
-        read: @escaping @Sendable (Date) async throws -> Activity,
+        read: @escaping @Sendable (Date) async throws -> Activity?,
         completion: @escaping @Sendable (Result<Activity?, Error>) -> Void
     ) {
         guard start else {
@@ -40,7 +39,7 @@ internal extension HealthKitManager {
             subscriber: completion,
             register: { [weak self] in
                 guard let self else { return nil }
-                return self.executeObserverQuery(coordinator: coordinator, descriptors: descriptors(), deliveryDates: deliveryDates, read: read)
+                return self.executeObserverQuery(coordinator: coordinator, descriptors: descriptors(), read: read)
             },
             halt: { [weak self] query in
                 guard let self, let query = query as? HKObserverQuery else { return }
@@ -53,11 +52,11 @@ internal extension HealthKitManager {
     private func executeObserverQuery<Activity: Sendable>(
         coordinator: HealthKitObservationCoordinator<Activity>,
         descriptors: [HKQueryDescriptor],
-        deliveryDates: @escaping @Sendable () -> [Date],
-        read: @escaping @Sendable (Date) async throws -> Activity
+        read: @escaping @Sendable (Date) async throws -> Activity?
     ) -> HKObserverQuery {
         let query = HKObserverQuery(queryDescriptors: descriptors) { query, _, deliveryCompletionHandler, error in
             nonisolated(unsafe) let acknowledgeDelivery = deliveryCompletionHandler
+            let deliveredAt = Date()
 
             if let error = error {
                 switch coordinator.handling(forFailedDeliveryFrom: query, error: error) {
@@ -76,7 +75,7 @@ internal extension HealthKitManager {
             case .process(let subscriber):
                 Task {
                     await HealthKitDeliveryProcessor.processDelivery(
-                        dates: deliveryDates(),
+                        date: deliveredAt,
                         read: read,
                         report: subscriber,
                         acknowledge: { acknowledgeDelivery() }

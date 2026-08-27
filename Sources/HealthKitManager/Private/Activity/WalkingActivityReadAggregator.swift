@@ -61,6 +61,52 @@ enum WalkingActivityReadAggregator {
         return lenientActivity(date: date, outcomes: outcomes)
     }
 
+    /// Aggregates one background delivery's read, refusing to describe a day whose steps
+    /// could not be read.
+    ///
+    /// Steps are what a walking day is promoted on, so a delivery without them has nothing to
+    /// say: reporting one hands the caller a day whose steps read as zero, indistinguishable
+    /// from a real day of not moving. That is what a delivery landing in the first seconds
+    /// after midnight reads, and what a device that has produced nothing yet reads.
+    ///
+    /// The rules ``aggregate(date:outcomes:)`` already applies come first, so a locked database
+    /// still surfaces as a failure rather than being swallowed as silence.
+    ///
+    /// A day the caller asked for is different: an empty answer is the true answer to a
+    /// question the server asked, and ``aggregate(date:outcomes:)`` still returns it. Nobody
+    /// asked for a delivery, so a delivery with nothing to promote says nothing.
+    ///
+    /// Whatever else the read did or did not find travels as it is. An absent distance or
+    /// calorie count is left absent rather than withheld: suppressing a day because one metric
+    /// is missing would lose the steps that are the point of the delivery, and a metric the
+    /// member has switched off in Health is absent on every delivery, forever.
+    ///
+    /// Steps absent and steps *unreadable* are not the same answer, and only the aggregated
+    /// value cannot tell them apart — both arrive as `nil`. The outcome is what decides: a
+    /// steps read that threw is reported as the failure it was, rather than passed off as a
+    /// day nobody walked, which is the confusion ``WalkingActivityData`` exists to prevent.
+    ///
+    /// - Note: A member whose device records distance or calories but no steps — a wheelchair
+    ///   user, or a treadmill source that writes distance only — has nothing posted by a
+    ///   delivery. That is deliberate, not an oversight: steps are the unit the day is
+    ///   promoted on, and there is nothing to promote without them.
+    ///
+    /// - Parameters:
+    ///   - date: The day the metrics were read for.
+    ///   - outcomes: The result of every attempted metric read.
+    /// - Returns: The walking activity, or `nil` when the day genuinely has no steps.
+    /// - Throws: Whatever ``aggregate(date:outcomes:)`` throws, or the steps read's own failure
+    ///   when steps could not be read.
+    static func deliveryActivity(date: Date, outcomes: [WalkingMetric: Result<Double?, any Error>]) throws -> WalkingActivityData? {
+        let activity = try aggregate(date: date, outcomes: outcomes)
+
+        if case .failure(let stepsFailure)? = outcomes[.steps] {
+            throw stepsFailure
+        }
+
+        return activity.steps == nil ? nil : activity
+    }
+
     /// Aggregates outcomes without judging them, degrading every failed metric to `nil`.
     ///
     /// Used by the deprecated non-throwing read, which must keep returning whatever the

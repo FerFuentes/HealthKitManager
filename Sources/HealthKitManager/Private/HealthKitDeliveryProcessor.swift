@@ -12,60 +12,42 @@ import Foundation
 /// processing finished and the caller was notified. iOS permanently stops background
 /// delivery for a sample type after three unacknowledged deliveries.
 ///
-/// - Note: Processing runs in a detached task, so the system can suspend the app between
+/// - Note: Processing runs in an unstructured task, so the system can suspend the app between
 ///   the read and the acknowledgement — a delivery interrupted that way is retried by
 ///   HealthKit rather than lost. Holding a background assertion across the read would
 ///   require blocking a thread for the whole async read, which trades a rare retry for a
 ///   guaranteed priority inversion; the retry is the better deal.
 enum HealthKitDeliveryProcessor {
 
-    /// Processes one background delivery day by day and acknowledges it exactly once, afterwards.
+    /// Reads the day a delivery woke on, reports it once, and acknowledges the delivery
+    /// afterwards — on success and on failure alike.
     ///
-    /// Each day that reads cleanly is reported on its own. Days that fail collapse into a
-    /// single failure for the whole delivery, so one broken read cannot flood the subscriber
-    /// with a callback per day.
+    /// One delivery is one day. An observer keeps the running day current, which is what
+    /// an observer is for; recovering an earlier day belongs to a catch-up sync that can
+    /// ask the server which days it still wants. Re-reading a second day on every delivery
+    /// doubled the reads and the posts for the whole day to cover one moment of it.
+    ///
+    /// A read that returns `nil` is a delivery with nothing to report; it is still reported, as
+    /// a success carrying no activity, so a subscriber can tell it apart from a failure.
     ///
     /// - Parameters:
-    ///   - dates: The days to re-read for this delivery, reported in order.
-    ///   - read: Produces the activity for one day of the delivery being processed.
-    ///   - report: Receives each day's outcome, before the delivery is acknowledged.
+    ///   - date: The day the delivery woke on, captured when it arrived rather than when this
+    ///     runs — the two can straddle midnight, and reading the wrong day reads an empty one.
+    ///   - read: Produces the activity for that day, or `nil` when there is nothing to report.
+    ///   - report: Receives the outcome, before the delivery is acknowledged.
     ///   - acknowledge: HealthKit's completion handler for this specific delivery.
     static func processDelivery<Activity: Sendable>(
-        dates: [Date],
-        read: @Sendable (Date) async throws -> Activity,
+        date: Date,
+        read: @Sendable (Date) async throws -> Activity?,
         report: @Sendable (Result<Activity?, any Error>) -> Void,
         acknowledge: @Sendable () -> Void
     ) async {
-        var firstFailure: (any Error)?
+        defer { acknowledge() }
 
-        for date in dates {
-            do {
-                let activity = try await read(date)
-                report(.success(activity))
-            } catch {
-                firstFailure = firstFailure ?? error
-            }
+        do {
+            report(.success(try await read(date)))
+        } catch {
+            report(.failure(error))
         }
-
-        if let firstFailure {
-            report(.failure(firstFailure))
-        }
-
-        acknowledge()
-    }
-
-    /// The days one background delivery must cover: the previous day first, then the
-    /// current one, so samples that sync in shortly after midnight still update the
-    /// tail of the day they belong to.
-    ///
-    /// - Parameters:
-    ///   - now: The moment the delivery arrived.
-    ///   - calendar: The calendar used to step back one day.
-    /// - Returns: The dates to read, oldest first.
-    static func deliveryDates(endingAt now: Date, calendar: Calendar = Calendar(identifier: .gregorian)) -> [Date] {
-        guard let previousDay = calendar.date(byAdding: .day, value: -1, to: now) else {
-            return [now]
-        }
-        return [previousDay, now]
     }
 }

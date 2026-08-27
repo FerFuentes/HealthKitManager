@@ -26,9 +26,13 @@ internal extension HealthKitManager {
     ///   - completion: A closure called when walking activity data changes.
     ///                 Returns `Result<WalkingActivityData?, Error>`.
     ///
-    /// - Important: One delivery reports **twice**: the previous day first, then the current
-    ///   day. Callers that submit what they receive must expect two callbacks per delivery
-    ///   and decide separately what to do with the previous day.
+    /// - Important: One delivery reports **once**, for the day it woke on. Keeping the running
+    ///   day current is what this observer is for; recovering an earlier day belongs to a
+    ///   catch-up sync, which can ask the server what it still wants instead of re-posting a
+    ///   finished day on every delivery.
+    /// - Important: The metrics a delivery reads are the walking payload — steps, distance and
+    ///   calories — regardless of which types delivery was enabled for. Enabling a type says
+    ///   what wakes the app, not what a wake is worth reading.
     /// - Note: Transient observer failures are retried internally with backoff and never
     ///   reach `completion`. When the retries run out, observation stops and delivers
     ///   `HealthKitObservationError.observationStopped(afterConsecutiveFailures:lastError:)`
@@ -43,12 +47,28 @@ internal extension HealthKitManager {
             start,
             coordinator: walkingActivityObservation,
             descriptors: { [weak self] in self?.walkingActivityObserverDescriptors() ?? [] },
-            deliveryDates: { HealthKitDeliveryProcessor.deliveryDates(endingAt: Date()) },
             read: { [weak self] date in
                 guard let self else { throw Permission.Error.unavailable }
-                return try await self.readWalkingActivityMetrics(date: date, sampleTypes: self.walkingActivityBackgroundSampleTypes)
+                return try await self.readWalkingActivityDelivery(date: date)
             },
             completion: completion
+        )
+    }
+
+    /// Reads one background delivery: the walking payload for the day the delivery woke on,
+    /// or `nil` when that day has produced nothing to report.
+    ///
+    /// The types read are fixed here rather than passed in, so no caller can hand this the set
+    /// that woke the delivery and truncate the payload back down to it.
+    ///
+    /// - Parameter date: The day the delivery woke on.
+    /// - Returns: The day's walking activity, or `nil` when the day genuinely has no steps.
+    /// - Throws: ``WalkingActivityReadError`` when the read cannot be trusted, or the steps
+    ///   read's own failure when steps could not be read.
+    func readWalkingActivityDelivery(date: Date) async throws -> WalkingActivityData? {
+        try WalkingActivityReadAggregator.deliveryActivity(
+            date: date,
+            outcomes: await walkingActivityMetricOutcomes(date: date, sampleTypes: HealthKitManager.walkingActivityDeliverySampleTypes)
         )
     }
 
