@@ -12,7 +12,7 @@ import Foundation
 /// processing finished and the caller was notified. iOS permanently stops background
 /// delivery for a sample type after three unacknowledged deliveries.
 ///
-/// - Note: Processing runs in a detached task, so the system can suspend the app between
+/// - Note: Processing runs in an unstructured task, so the system can suspend the app between
 ///   the read and the acknowledgement — a delivery interrupted that way is retried by
 ///   HealthKit rather than lost. Holding a background assertion across the read would
 ///   require blocking a thread for the whole async read, which trades a rare retry for a

@@ -307,59 +307,23 @@ struct WalkingActivityReadTests {
         #expect(log.all == ["report-nothing", "acknowledge"])
     }
 
-    @Test func theDeliveryIsAcknowledgedEvenWhenReportingItselfBlowsUp() async {
-        let log = DeliveryLog()
+    // MARK: - Steps are what a delivery is for
 
-        await HealthKitDeliveryProcessor.processDelivery(
+    @Test func aDeliveryWithoutStepsReportsNothingEvenWhenOtherMetricsRead() throws {
+        let activity = try WalkingActivityReadAggregator.deliveryActivity(
             date: Date(),
-            read: { date in
-                WalkingActivityData(date: date, steps: 1, activeCalories: nil, distanceMeters: nil, durationMinutes: nil, averageHeartRate: nil)
-            },
-            report: { _ in log.append("report") },
-            acknowledge: { log.append("acknowledge") }
+            outcomes: [
+                .steps: .success(nil),
+                .durationMinutes: .success(nil),
+                .distanceMeters: .success(3_100),
+                .activeCalories: .success(180)
+            ]
         )
 
-        #expect(log.all.last == "acknowledge")
+        #expect(activity == nil)
     }
 
-    // MARK: - A delivery that could not read everything
-
-    @Test func aDeliveryWithOneFailedMetricReportsTheFailureRatherThanAPartialPayload() {
-        do {
-            let activity = try WalkingActivityReadAggregator.deliveryActivity(
-                date: Date(),
-                outcomes: [
-                    .steps: .success(4_200),
-                    .durationMinutes: .success(47),
-                    .distanceMeters: .failure(MetricFailure()),
-                    .activeCalories: .success(180)
-                ]
-            )
-            Issue.record("Expected metricsUnreadable, got \(String(describing: activity))")
-        } catch WalkingActivityReadError.metricsUnreadable(let underlying) {
-            #expect(underlying.count == 1)
-        } catch {
-            Issue.record("Expected metricsUnreadable, got \(error)")
-        }
-    }
-
-    @Test func aLockedDatabaseStillWinsOverAPartialRead() {
-        do {
-            _ = try WalkingActivityReadAggregator.deliveryActivity(
-                date: Date(),
-                outcomes: [
-                    .steps: .success(4_200),
-                    .distanceMeters: .failure(HKError(.errorDatabaseInaccessible))
-                ]
-            )
-            Issue.record("Expected databaseInaccessible")
-        } catch WalkingActivityReadError.databaseInaccessible {
-        } catch {
-            Issue.record("Expected databaseInaccessible, got \(error)")
-        }
-    }
-
-    @Test func aDeliveryWhereEveryAttemptedMetricAnsweredIsReported() throws {
+    @Test func aDeliveryWithStepsReportsWhateverElseItRead() throws {
         let activity = try WalkingActivityReadAggregator.deliveryActivity(
             date: Date(),
             outcomes: [
@@ -371,7 +335,33 @@ struct WalkingActivityReadTests {
         )
 
         #expect(activity?.steps == 4_200)
+        #expect(activity?.activeCalories == 180)
         #expect(activity?.distanceMeters == nil)
+    }
+
+    @Test func aMetricThatFailedDoesNotSuppressTheStepsThatRead() throws {
+        let activity = try WalkingActivityReadAggregator.deliveryActivity(
+            date: Date(),
+            outcomes: [.steps: .success(4_200), .distanceMeters: .failure(MetricFailure())]
+        )
+
+        #expect(activity?.steps == 4_200)
+    }
+
+    @Test func aLockedDatabaseIsStillAFailureAndNeverSilence() {
+        do {
+            _ = try WalkingActivityReadAggregator.deliveryActivity(
+                date: Date(),
+                outcomes: [
+                    .steps: .success(nil),
+                    .distanceMeters: .failure(HKError(.errorDatabaseInaccessible))
+                ]
+            )
+            Issue.record("Expected databaseInaccessible")
+        } catch WalkingActivityReadError.databaseInaccessible {
+        } catch {
+            Issue.record("Expected databaseInaccessible, got \(error)")
+        }
     }
 
     @Test func aRequestedDayKeepsWhateverItCouldRead() throws {

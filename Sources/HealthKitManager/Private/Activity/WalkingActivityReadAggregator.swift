@@ -40,7 +40,10 @@ enum WalkingActivityReadAggregator {
             throw Permission.Error.invalidParameters("No supported walking metric was requested.")
         }
 
-        let failures = failures(in: outcomes)
+        let failures = outcomes.values.compactMap { outcome -> (any Error)? in
+            guard case .failure(let error) = outcome else { return nil }
+            return error
+        }
 
         if failures.contains(where: { $0.isHealthKitDatabaseInaccessible }) {
             throw WalkingActivityReadError.databaseInaccessible
@@ -58,63 +61,34 @@ enum WalkingActivityReadAggregator {
         return lenientActivity(date: date, outcomes: outcomes)
     }
 
-    /// Aggregates one background delivery's read, refusing to describe a day that nothing
-    /// was read for.
+    /// Aggregates one background delivery's read, refusing to describe a day whose steps
+    /// could not be read.
     ///
-    /// ``aggregate(date:outcomes:)`` already throws when reads failed. A delivery adds a case
-    /// that must not become a payload either: every metric absent with nothing having failed.
-    /// That is a day HealthKit has no samples for — which is exactly what a delivery arriving
-    /// in the first seconds after midnight reads — and reporting it hands the caller a day of
-    /// zeros indistinguishable from a real one.
+    /// Steps are what a walking day is promoted on, so a delivery without them has nothing to
+    /// say: reporting one hands the caller a day whose steps read as zero, indistinguishable
+    /// from a real day of not moving. That is what a delivery landing in the first seconds
+    /// after midnight reads, and what a device that has produced nothing yet reads.
     ///
-    /// A day the caller asked for is different: an empty answer is the true answer and
-    /// ``aggregate(date:outcomes:)`` still returns it. Nobody asked for a delivery, so a
-    /// delivery with nothing to say says nothing.
+    /// The rules ``aggregate(date:outcomes:)`` already applies come first, so a locked database
+    /// still surfaces as a failure rather than being swallowed as silence.
     ///
-    /// A metric that *failed* is the other half of the same rule, and the stricter half: a
-    /// delivery reports only when every attempted metric either produced a value or genuinely
-    /// had no samples. Absence is expressed as `nil` whichever it was, and consumers post `nil`
-    /// as zero, so a payload carrying one failed metric silently overwrites a real distance or
-    /// a real calorie count with a zero. Partial truth is worth less here than the failure.
+    /// A day the caller asked for is different: an empty answer is the true answer to a
+    /// question the server asked, and ``aggregate(date:outcomes:)`` still returns it. Nobody
+    /// asked for a delivery, so a delivery with nothing to promote says nothing.
+    ///
+    /// Whatever else the read did or did not find travels as it is. An absent distance or
+    /// calorie count is left absent rather than withheld: suppressing a day because one metric
+    /// is missing would lose the steps that are the point of the delivery, and a metric the
+    /// member has switched off in Health is absent on every delivery, forever.
     ///
     /// - Parameters:
     ///   - date: The day the metrics were read for.
     ///   - outcomes: The result of every attempted metric read.
-    /// - Returns: The walking activity, or `nil` when no metric was read at all.
-    /// - Throws: Whatever ``aggregate(date:outcomes:)`` throws, or
-    ///   ``WalkingActivityReadError/metricsUnreadable(underlying:)`` when some metrics read and
-    ///   others failed.
+    /// - Returns: The walking activity, or `nil` when its steps could not be read.
+    /// - Throws: Whatever ``aggregate(date:outcomes:)`` throws.
     static func deliveryActivity(date: Date, outcomes: [WalkingMetric: Result<Double?, any Error>]) throws -> WalkingActivityData? {
         let activity = try aggregate(date: date, outcomes: outcomes)
-
-        let failures = failures(in: outcomes)
-        guard failures.isEmpty else {
-            throw WalkingActivityReadError.metricsUnreadable(underlying: failures)
-        }
-
-        return carriesAMetric(activity) ? activity : nil
-    }
-
-    /// Whether a read produced any metric at all, as opposed to describing an absent day.
-    ///
-    /// - Parameter activity: The aggregated read.
-    /// - Returns: `true` when at least one metric carries a value.
-    static func carriesAMetric(_ activity: WalkingActivityData) -> Bool {
-        activity.steps != nil
-            || activity.activeCalories != nil
-            || activity.distanceMeters != nil
-            || activity.durationMinutes != nil
-    }
-
-    /// Every failure among the attempted reads, in no particular order.
-    ///
-    /// - Parameter outcomes: The result of every attempted metric read.
-    /// - Returns: The errors, empty when every attempted metric answered.
-    private static func failures(in outcomes: [WalkingMetric: Result<Double?, any Error>]) -> [any Error] {
-        outcomes.values.compactMap { outcome in
-            guard case .failure(let error) = outcome else { return nil }
-            return error
-        }
+        return activity.steps == nil ? nil : activity
     }
 
     /// Aggregates outcomes without judging them, degrading every failed metric to `nil`.

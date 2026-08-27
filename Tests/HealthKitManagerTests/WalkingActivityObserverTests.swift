@@ -57,8 +57,6 @@ struct WalkingActivityObserverTests {
     }
 
     @Test func theDeliveryReadStaysDerivedFromTheWalkingTypesMinusHeartRate() {
-        let manager = HealthKitManager.shared
-
         #expect(HealthKitManager.walkingActivityDeliverySampleTypes
             == Set(HealthKitManager.forWalkingActivityQuantityType.subtracting([HKQuantityType(.heartRate)]).map { $0 as HKSampleType }))
         #expect(!HealthKitManager.walkingActivityDeliverySampleTypes.contains(HKQuantityType(.heartRate) as HKSampleType))
