@@ -34,11 +34,13 @@ public protocol HealthActivitiesPermission {
     /// Enables or disables background delivery for walking activity updates.
     ///
     /// The enabled types are also the ones the walking observer watches, so a type enabled
-    /// here always has a handler to acknowledge its deliveries.
+    /// here always has a handler to acknowledge its deliveries. They decide **what wakes the
+    /// app**, not what a delivery reads: every delivery reads the whole walking payload, so
+    /// narrowing these never narrows what gets posted.
     ///
     /// - Parameters:
     ///   - enabled: `true` to enable, `false` to disable.
-    ///   - toRead: Optional set of quantity types. Defaults to steps, heart rate, distance, and calories.
+    ///   - toRead: Optional set of quantity types to wake on. Defaults to steps, heart rate, distance, and calories.
     /// - Throws: `Permission.Error` when authorization is not established, or
     ///   ``BackgroundDeliveryError`` naming the types that could not be toggled.
     func setBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async throws

@@ -29,19 +29,29 @@ internal class HealthKitManager: @unchecked Sendable {
         HKQuantityType(.activeEnergyBurned),
     ]
     
-    /// The walking types currently enabled for background delivery, falling back to the
-    /// package defaults until the caller enables an explicit set. The observer registers
-    /// exactly these, so no enabled type can deliver without a handler to acknowledge it.
+    /// The metrics one walking delivery reads, whichever types woke it.
+    ///
+    /// Waking and reading are separate questions, and answering both with the enabled set
+    /// silently truncated the payload: a caller that narrowed its wake-ups to steps started
+    /// posting a day with no distance and no calories, which the server stores as zeros over
+    /// values it already held. Heart rate stays out — it lands continuously and belongs to
+    /// the foreground syncs that ask for it by name.
+    internal let walkingActivityDeliverySampleTypes: Set<HKSampleType> = [
+        HKQuantityType(.stepCount),
+        HKQuantityType(.distanceWalkingRunning),
+        HKQuantityType(.activeEnergyBurned)
+    ]
+
+    /// The walking types currently enabled for background delivery — what wakes the app —
+    /// falling back to the package defaults until the caller enables an explicit set. The
+    /// observer registers exactly these, so no enabled type can deliver without a handler
+    /// to acknowledge it.
     internal var walkingActivityBackgroundTypes: Set<HKQuantityType> {
         backgroundTypesLock.withLock { enabledWalkingActivityBackgroundTypes ?? forWalkingActivityQuantityType }
     }
 
-    internal var walkingActivityBackgroundSampleTypes: Set<HKSampleType> {
-        Set(walkingActivityBackgroundTypes.map { $0 as HKSampleType })
-    }
-
     /// Records which walking types background delivery was last enabled for, so the
-    /// observer and the reads follow the same set.
+    /// observer watches exactly what can wake it.
     ///
     /// - Parameter types: The enabled types, or `nil` once delivery is disabled.
     internal func rememberWalkingActivityBackgroundTypes(_ types: Set<HKQuantityType>?) {

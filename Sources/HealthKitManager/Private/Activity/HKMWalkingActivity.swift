@@ -26,9 +26,13 @@ internal extension HealthKitManager {
     ///   - completion: A closure called when walking activity data changes.
     ///                 Returns `Result<WalkingActivityData?, Error>`.
     ///
-    /// - Important: One delivery reports **twice**: the previous day first, then the current
-    ///   day. Callers that submit what they receive must expect two callbacks per delivery
-    ///   and decide separately what to do with the previous day.
+    /// - Important: One delivery reports **once**, for the day it woke on. Keeping the running
+    ///   day current is what this observer is for; recovering an earlier day belongs to a
+    ///   catch-up sync, which can ask the server what it still wants instead of re-posting a
+    ///   finished day on every delivery.
+    /// - Important: The metrics a delivery reads are the walking payload — steps, distance and
+    ///   calories — regardless of which types delivery was enabled for. Enabling a type says
+    ///   what wakes the app, not what a wake is worth reading.
     /// - Note: Transient observer failures are retried internally with backoff and never
     ///   reach `completion`. When the retries run out, observation stops and delivers
     ///   `HealthKitObservationError.observationStopped(afterConsecutiveFailures:lastError:)`
@@ -43,10 +47,9 @@ internal extension HealthKitManager {
             start,
             coordinator: walkingActivityObservation,
             descriptors: { [weak self] in self?.walkingActivityObserverDescriptors() ?? [] },
-            deliveryDates: { HealthKitDeliveryProcessor.deliveryDates(endingAt: Date()) },
             read: { [weak self] date in
                 guard let self else { throw Permission.Error.unavailable }
-                return try await self.readWalkingActivityMetrics(date: date, sampleTypes: self.walkingActivityBackgroundSampleTypes)
+                return try await self.readWalkingActivityMetrics(date: date, sampleTypes: self.walkingActivityDeliverySampleTypes)
             },
             completion: completion
         )
