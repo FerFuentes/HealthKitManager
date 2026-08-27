@@ -61,6 +61,41 @@ enum WalkingActivityReadAggregator {
         return lenientActivity(date: date, outcomes: outcomes)
     }
 
+    /// Aggregates one background delivery's read, refusing to describe a day that nothing
+    /// was read for.
+    ///
+    /// ``aggregate(date:outcomes:)`` already throws when reads failed. A delivery adds a case
+    /// that must not become a payload either: every metric absent with nothing having failed.
+    /// That is a day HealthKit has no samples for — which is exactly what a delivery arriving
+    /// in the first seconds after midnight reads — and reporting it hands the caller a day of
+    /// zeros indistinguishable from a real one.
+    ///
+    /// A day the caller asked for is different: an empty answer is the true answer and
+    /// ``aggregate(date:outcomes:)`` still returns it. Nobody asked for a delivery, so a
+    /// delivery with nothing to say says nothing.
+    ///
+    /// - Parameters:
+    ///   - date: The day the metrics were read for.
+    ///   - outcomes: The result of every attempted metric read.
+    /// - Returns: The walking activity, or `nil` when no metric was read at all.
+    /// - Throws: Whatever ``aggregate(date:outcomes:)`` throws.
+    static func deliveryActivity(date: Date, outcomes: [WalkingMetric: Result<Double?, any Error>]) throws -> WalkingActivityData? {
+        let activity = try aggregate(date: date, outcomes: outcomes)
+        return carriesAMetric(activity) ? activity : nil
+    }
+
+    /// Whether a read produced any metric at all, as opposed to describing an absent day.
+    ///
+    /// - Parameter activity: The aggregated read.
+    /// - Returns: `true` when at least one metric carries a value.
+    static func carriesAMetric(_ activity: WalkingActivityData) -> Bool {
+        activity.steps != nil
+            || activity.activeCalories != nil
+            || activity.distanceMeters != nil
+            || activity.durationMinutes != nil
+            || activity.averageHeartRate != nil
+    }
+
     /// Aggregates outcomes without judging them, degrading every failed metric to `nil`.
     ///
     /// Used by the deprecated non-throwing read, which must keep returning whatever the

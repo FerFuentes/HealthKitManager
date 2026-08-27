@@ -49,9 +49,25 @@ internal extension HealthKitManager {
             descriptors: { [weak self] in self?.walkingActivityObserverDescriptors() ?? [] },
             read: { [weak self] date in
                 guard let self else { throw Permission.Error.unavailable }
-                return try await self.readWalkingActivityMetrics(date: date, sampleTypes: self.walkingActivityDeliverySampleTypes)
+                return try await self.readWalkingActivityDelivery(date: date)
             },
             completion: completion
+        )
+    }
+
+    /// Reads one background delivery: the walking payload for the day the delivery woke on,
+    /// or `nil` when that day has produced nothing to report.
+    ///
+    /// The types read are fixed here rather than passed in, so no caller can hand this the set
+    /// that woke the delivery and truncate the payload back down to it.
+    ///
+    /// - Parameter date: The day the delivery woke on.
+    /// - Returns: The day's walking activity, or `nil` when no metric was read at all.
+    /// - Throws: ``WalkingActivityReadError`` when the read cannot be trusted.
+    func readWalkingActivityDelivery(date: Date) async throws -> WalkingActivityData? {
+        try WalkingActivityReadAggregator.deliveryActivity(
+            date: date,
+            outcomes: await walkingActivityMetricOutcomes(date: date, sampleTypes: walkingActivityDeliverySampleTypes)
         )
     }
 

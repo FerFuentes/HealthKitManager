@@ -36,11 +36,9 @@ internal class HealthKitManager: @unchecked Sendable {
     /// posting a day with no distance and no calories, which the server stores as zeros over
     /// values it already held. Heart rate stays out — it lands continuously and belongs to
     /// the foreground syncs that ask for it by name.
-    internal let walkingActivityDeliverySampleTypes: Set<HKSampleType> = [
-        HKQuantityType(.stepCount),
-        HKQuantityType(.distanceWalkingRunning),
-        HKQuantityType(.activeEnergyBurned)
-    ]
+    internal var walkingActivityDeliverySampleTypes: Set<HKSampleType> {
+        Set(forWalkingActivityQuantityType.subtracting([HKQuantityType(.heartRate)]).map { $0 as HKSampleType })
+    }
 
     /// The walking types currently enabled for background delivery — what wakes the app —
     /// falling back to the package defaults until the caller enables an explicit set. The
@@ -50,12 +48,21 @@ internal class HealthKitManager: @unchecked Sendable {
         backgroundTypesLock.withLock { enabledWalkingActivityBackgroundTypes ?? forWalkingActivityQuantityType }
     }
 
-    /// Records which walking types background delivery was last enabled for, so the
-    /// observer watches exactly what can wake it.
+    /// Records which walking types background delivery is actually live for, so the observer
+    /// can watch exactly what can wake it. A live observation re-registers its descriptors when
+    /// this changes; without that the observer would keep watching the set it started with and
+    /// a newly enabled type would deliver with nothing to acknowledge it.
     ///
-    /// - Parameter types: The enabled types, or `nil` once delivery is disabled.
+    /// - Parameter types: The types delivery is live for, or `nil` once none are.
     internal func rememberWalkingActivityBackgroundTypes(_ types: Set<HKQuantityType>?) {
-        backgroundTypesLock.withLock { enabledWalkingActivityBackgroundTypes = types }
+        let changed = backgroundTypesLock.withLock { () -> Bool in
+            guard enabledWalkingActivityBackgroundTypes != types else { return false }
+            enabledWalkingActivityBackgroundTypes = types
+            return true
+        }
+
+        guard changed else { return }
+        walkingActivityObservation.reregisterIfObserving()
     }
 
     internal let forDietaryNutritionQuantityType: Set = [
@@ -232,11 +239,19 @@ internal class HealthKitManager: @unchecked Sendable {
     /// - Parameters:
     ///   - enable: `true` to enable delivery, `false` to disable it.
     ///   - types: The sample types to toggle.
+    ///   - authorizedTypes: The types authorization must cover, when that is wider than the
+    ///     types being toggled — a caller whose deliveries read more than they wake on must
+    ///     name the whole read here, or an unauthorized read arrives as an empty day rather
+    ///     than as an error. Defaults to `types`.
     /// - Throws: A `Permission.Error` when enabling without established authorization, or
     ///   ``BackgroundDeliveryError`` naming the types that could not be toggled.
-    internal func setBackgroundDelivery(enable: Bool, types: Set<HKSampleType>) async throws {
+    internal func setBackgroundDelivery(
+        enable: Bool,
+        types: Set<HKSampleType>,
+        requiringAuthorizationFor authorizedTypes: Set<HKSampleType>? = nil
+    ) async throws {
         if enable {
-            try await requireEstablishedAuthorization(toRead: types)
+            try await requireEstablishedAuthorization(toRead: authorizedTypes ?? types)
         }
 
         var failures: [(type: HKSampleType, error: any Error)] = []

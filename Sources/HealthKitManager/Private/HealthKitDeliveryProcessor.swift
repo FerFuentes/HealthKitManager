@@ -27,23 +27,27 @@ enum HealthKitDeliveryProcessor {
     /// ask the server which days it still wants. Re-reading a second day on every delivery
     /// doubled the reads and the posts for the whole day to cover one moment of it.
     ///
+    /// A read that returns `nil` is a delivery with nothing to report; it is still reported, as
+    /// a success carrying no activity, so a subscriber can tell it apart from a failure.
+    ///
     /// - Parameters:
-    ///   - date: The day the delivery woke on.
-    ///   - read: Produces the activity for that day.
+    ///   - date: The day the delivery woke on, captured when it arrived rather than when this
+    ///     runs — the two can straddle midnight, and reading the wrong day reads an empty one.
+    ///   - read: Produces the activity for that day, or `nil` when there is nothing to report.
     ///   - report: Receives the outcome, before the delivery is acknowledged.
     ///   - acknowledge: HealthKit's completion handler for this specific delivery.
     static func processDelivery<Activity: Sendable>(
         date: Date,
-        read: @Sendable (Date) async throws -> Activity,
+        read: @Sendable (Date) async throws -> Activity?,
         report: @Sendable (Result<Activity?, any Error>) -> Void,
         acknowledge: @Sendable () -> Void
     ) async {
+        defer { acknowledge() }
+
         do {
             report(.success(try await read(date)))
         } catch {
             report(.failure(error))
         }
-
-        acknowledge()
     }
 }

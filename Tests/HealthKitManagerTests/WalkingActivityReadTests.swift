@@ -239,19 +239,120 @@ struct WalkingActivityReadTests {
         #expect(log.all == ["report", "acknowledge"])
     }
 
-    // MARK: - Delivery read set
+    // MARK: - A delivery with nothing to say
 
-    @Test func aDeliveryReadsTheWalkingPayloadWhateverWokeIt() {
-        let manager = HealthKitManager.shared
-        defer { manager.rememberWalkingActivityBackgroundTypes(nil) }
+    @Test func aDeliveryThatReadNoMetricAtAllReportsNoPayload() throws {
+        let absent = try WalkingActivityReadAggregator.deliveryActivity(
+            date: Date(),
+            outcomes: [
+                .steps: .success(nil),
+                .durationMinutes: .success(nil),
+                .distanceMeters: .success(nil),
+                .activeCalories: .success(nil)
+            ]
+        )
 
-        manager.rememberWalkingActivityBackgroundTypes([HKQuantityType(.stepCount)])
+        #expect(absent == nil)
+    }
 
-        #expect(manager.walkingActivityDeliverySampleTypes == Set([
-            HKQuantityType(.stepCount) as HKSampleType,
-            HKQuantityType(.distanceWalkingRunning) as HKSampleType,
-            HKQuantityType(.activeEnergyBurned) as HKSampleType
-        ]))
-        #expect(!manager.walkingActivityDeliverySampleTypes.contains(HKQuantityType(.heartRate) as HKSampleType))
+    @Test func aDeliveryCarryingOneRealMetricIsStillReported() throws {
+        let activity = try WalkingActivityReadAggregator.deliveryActivity(
+            date: Date(),
+            outcomes: [
+                .steps: .success(1_200),
+                .durationMinutes: .success(nil),
+                .distanceMeters: .success(nil),
+                .activeCalories: .success(nil)
+            ]
+        )
+
+        #expect(activity?.steps == 1_200)
+    }
+
+    @Test func aDeliveryCarryingAGenuineZeroIsStillReported() throws {
+        let activity = try WalkingActivityReadAggregator.deliveryActivity(
+            date: Date(),
+            outcomes: [.steps: .success(0), .distanceMeters: .success(nil)]
+        )
+
+        #expect(activity?.steps == 0)
+    }
+
+    @Test func aRequestedDayThatIsGenuinelyEmptyStillAggregatesToZeros() throws {
+        let requested = try WalkingActivityReadAggregator.aggregate(
+            date: Date(),
+            outcomes: [.steps: .success(nil), .distanceMeters: .success(nil)]
+        )
+
+        #expect(requested.steps == nil)
+    }
+
+    @Test func anAbsentDeliveryIsReportedAsSuccessWithNoActivityAndStillAcknowledged() async {
+        let log = DeliveryLog()
+
+        await HealthKitDeliveryProcessor.processDelivery(
+            date: Date(),
+            read: { _ -> WalkingActivityData? in nil },
+            report: { outcome in
+                switch outcome {
+                case .success(let data):
+                    log.append(data == nil ? "report-nothing" : "report-payload")
+                case .failure:
+                    log.append("report-failure")
+                }
+            },
+            acknowledge: { log.append("acknowledge") }
+        )
+
+        #expect(log.all == ["report-nothing", "acknowledge"])
+    }
+
+    @Test func theDeliveryIsAcknowledgedEvenWhenReportingItselfBlowsUp() async {
+        let log = DeliveryLog()
+
+        await HealthKitDeliveryProcessor.processDelivery(
+            date: Date(),
+            read: { date in
+                WalkingActivityData(date: date, steps: 1, activeCalories: nil, distanceMeters: nil, durationMinutes: nil, averageHeartRate: nil)
+            },
+            report: { _ in log.append("report") },
+            acknowledge: { log.append("acknowledge") }
+        )
+
+        #expect(log.all.last == "acknowledge")
+    }
+
+    // MARK: - Partial toggles
+
+    @Test func atypeThatFailedToEnableIsNotLive() {
+        let live = WalkingBackgroundToggle.liveTypes(
+            after: true,
+            requested: [HKQuantityType(.stepCount), HKQuantityType(.distanceWalkingRunning)],
+            failed: [HKQuantityTypeIdentifier.distanceWalkingRunning.rawValue]
+        )
+
+        #expect(live == [HKQuantityType(.stepCount)])
+    }
+
+    @Test func aTypeThatFailedToDisableIsStillLiveAndMustStayWatched() {
+        let live = WalkingBackgroundToggle.liveTypes(
+            after: false,
+            requested: [HKQuantityType(.stepCount), HKQuantityType(.distanceWalkingRunning)],
+            failed: [HKQuantityTypeIdentifier.stepCount.rawValue]
+        )
+
+        #expect(live == [HKQuantityType(.stepCount)])
+    }
+
+    @Test func aCleanDisableLeavesNothingLive() {
+        #expect(WalkingBackgroundToggle.liveTypes(after: false, requested: [HKQuantityType(.stepCount)], failed: []) == nil)
+    }
+
+    @Test func aTotallyFailedEnableLeavesNothingLive() {
+        #expect(WalkingBackgroundToggle.liveTypes(
+            after: true,
+            requested: [HKQuantityType(.stepCount)],
+            failed: [HKQuantityTypeIdentifier.stepCount.rawValue]
+        ) == nil)
     }
 }
