@@ -322,37 +322,64 @@ struct WalkingActivityReadTests {
         #expect(log.all.last == "acknowledge")
     }
 
-    // MARK: - Partial toggles
+    // MARK: - A delivery that could not read everything
 
-    @Test func atypeThatFailedToEnableIsNotLive() {
-        let live = WalkingBackgroundToggle.liveTypes(
-            after: true,
-            requested: [HKQuantityType(.stepCount), HKQuantityType(.distanceWalkingRunning)],
-            failed: [HKQuantityTypeIdentifier.distanceWalkingRunning.rawValue]
+    @Test func aDeliveryWithOneFailedMetricReportsTheFailureRatherThanAPartialPayload() {
+        do {
+            let activity = try WalkingActivityReadAggregator.deliveryActivity(
+                date: Date(),
+                outcomes: [
+                    .steps: .success(4_200),
+                    .durationMinutes: .success(47),
+                    .distanceMeters: .failure(MetricFailure()),
+                    .activeCalories: .success(180)
+                ]
+            )
+            Issue.record("Expected metricsUnreadable, got \(String(describing: activity))")
+        } catch WalkingActivityReadError.metricsUnreadable(let underlying) {
+            #expect(underlying.count == 1)
+        } catch {
+            Issue.record("Expected metricsUnreadable, got \(error)")
+        }
+    }
+
+    @Test func aLockedDatabaseStillWinsOverAPartialRead() {
+        do {
+            _ = try WalkingActivityReadAggregator.deliveryActivity(
+                date: Date(),
+                outcomes: [
+                    .steps: .success(4_200),
+                    .distanceMeters: .failure(HKError(.errorDatabaseInaccessible))
+                ]
+            )
+            Issue.record("Expected databaseInaccessible")
+        } catch WalkingActivityReadError.databaseInaccessible {
+        } catch {
+            Issue.record("Expected databaseInaccessible, got \(error)")
+        }
+    }
+
+    @Test func aDeliveryWhereEveryAttemptedMetricAnsweredIsReported() throws {
+        let activity = try WalkingActivityReadAggregator.deliveryActivity(
+            date: Date(),
+            outcomes: [
+                .steps: .success(4_200),
+                .durationMinutes: .success(47),
+                .distanceMeters: .success(nil),
+                .activeCalories: .success(180)
+            ]
         )
 
-        #expect(live == [HKQuantityType(.stepCount)])
+        #expect(activity?.steps == 4_200)
+        #expect(activity?.distanceMeters == nil)
     }
 
-    @Test func aTypeThatFailedToDisableIsStillLiveAndMustStayWatched() {
-        let live = WalkingBackgroundToggle.liveTypes(
-            after: false,
-            requested: [HKQuantityType(.stepCount), HKQuantityType(.distanceWalkingRunning)],
-            failed: [HKQuantityTypeIdentifier.stepCount.rawValue]
+    @Test func aRequestedDayKeepsWhateverItCouldRead() throws {
+        let requested = try WalkingActivityReadAggregator.aggregate(
+            date: Date(),
+            outcomes: [.steps: .success(4_200), .distanceMeters: .failure(MetricFailure())]
         )
 
-        #expect(live == [HKQuantityType(.stepCount)])
-    }
-
-    @Test func aCleanDisableLeavesNothingLive() {
-        #expect(WalkingBackgroundToggle.liveTypes(after: false, requested: [HKQuantityType(.stepCount)], failed: []) == nil)
-    }
-
-    @Test func aTotallyFailedEnableLeavesNothingLive() {
-        #expect(WalkingBackgroundToggle.liveTypes(
-            after: true,
-            requested: [HKQuantityType(.stepCount)],
-            failed: [HKQuantityTypeIdentifier.stepCount.rawValue]
-        ) == nil)
+        #expect(requested.steps == 4_200)
     }
 }

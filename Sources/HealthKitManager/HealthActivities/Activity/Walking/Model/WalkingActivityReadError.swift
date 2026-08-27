@@ -17,6 +17,10 @@ public enum WalkingActivityReadError: Error {
     case databaseInaccessible
     /// Every attempted metric failed to read; returning data would fabricate an empty day.
     case allMetricsFailed(underlying: [any Error])
+    /// Some metrics read and others failed. The day is real but the payload would be part
+    /// fiction, and a consumer cannot tell a metric that failed from one with no samples —
+    /// it posts both as zero, overwriting whatever the server already held for them.
+    case metricsUnreadable(underlying: [any Error])
 }
 
 extension WalkingActivityReadError: LocalizedError {
@@ -26,6 +30,8 @@ extension WalkingActivityReadError: LocalizedError {
             return "HealthKit database is inaccessible while the device is locked."
         case .allMetricsFailed(let underlying):
             return "Every walking activity metric failed to read: \(underlying.map(\.localizedDescription).joined(separator: "; "))"
+        case .metricsUnreadable(let underlying):
+            return "Some walking activity metrics failed to read: \(underlying.map(\.localizedDescription).joined(separator: "; "))"
         }
     }
 }

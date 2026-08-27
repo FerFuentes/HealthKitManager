@@ -67,7 +67,7 @@ internal extension HealthKitManager {
     func readWalkingActivityDelivery(date: Date) async throws -> WalkingActivityData? {
         try WalkingActivityReadAggregator.deliveryActivity(
             date: date,
-            outcomes: await walkingActivityMetricOutcomes(date: date, sampleTypes: walkingActivityDeliverySampleTypes)
+            outcomes: await walkingActivityMetricOutcomes(date: date, sampleTypes: HealthKitManager.walkingActivityDeliverySampleTypes)
         )
     }
 

@@ -38,18 +38,14 @@ public protocol HealthActivitiesPermission {
     /// app**, not what a delivery reads: every delivery reads the whole walking payload, so
     /// narrowing these never narrows what gets posted.
     ///
-    /// A toggle that only partly succeeds still records which types ended up live, so the
-    /// observer keeps covering them, and then throws.
-    ///
     /// - Parameters:
     ///   - enabled: `true` to enable, `false` to disable.
     ///   - toRead: Optional set of quantity types to wake on. Defaults to steps, heart rate,
     ///     distance and calories — every walking type, heart rate included, which wakes the
     ///     app far more often than a walking total changes. Callers that care about battery
     ///     should pass the one type their payload is accounted in.
-    /// - Throws: `Permission.Error` when authorization is not established for the union of
-    ///   these types and the walking payload every delivery reads, or ``BackgroundDeliveryError``
-    ///   naming the types that could not be toggled.
+    /// - Throws: `Permission.Error` when authorization is not established, or
+    ///   ``BackgroundDeliveryError`` naming the types that could not be toggled.
     func setBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>?) async throws
 
     /// Enables or disables background delivery for sleep activity updates.
@@ -114,26 +110,9 @@ extension HealthActivitiesPermission {
 
     public func setBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async throws {
         let manager = HealthKitManager.shared
-        let types = toRead ?? manager.forWalkingActivityQuantityType
-        let sampleTypes = Set(types.map { $0 as HKSampleType })
-
-        do {
-            try await manager.setBackgroundDelivery(
-                enable: enabled,
-                types: sampleTypes,
-                requiringAuthorizationFor: sampleTypes.union(manager.walkingActivityDeliverySampleTypes)
-            )
-            manager.rememberWalkingActivityBackgroundTypes(enabled ? types : nil)
-        } catch let failure as BackgroundDeliveryError {
-            manager.rememberWalkingActivityBackgroundTypes(
-                WalkingBackgroundToggle.liveTypes(
-                    after: enabled,
-                    requested: types,
-                    failed: Set(failure.failedTypeIdentifiers)
-                )
-            )
-            throw failure
-        }
+        let types = toRead ?? HealthKitManager.forWalkingActivityQuantityType
+        try await manager.setBackgroundDelivery(enable: enabled, types: Set(types.map { $0 as HKSampleType }))
+        manager.rememberWalkingActivityBackgroundTypes(enabled ? types : nil)
     }
 
     public func setBackgroundSleepActivityUpdates(enabled: Bool) async throws {

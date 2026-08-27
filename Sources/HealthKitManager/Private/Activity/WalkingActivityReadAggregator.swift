@@ -40,10 +40,7 @@ enum WalkingActivityReadAggregator {
             throw Permission.Error.invalidParameters("No supported walking metric was requested.")
         }
 
-        let failures = outcomes.values.compactMap { outcome -> (any Error)? in
-            guard case .failure(let error) = outcome else { return nil }
-            return error
-        }
+        let failures = failures(in: outcomes)
 
         if failures.contains(where: { $0.isHealthKitDatabaseInaccessible }) {
             throw WalkingActivityReadError.databaseInaccessible
@@ -74,13 +71,27 @@ enum WalkingActivityReadAggregator {
     /// ``aggregate(date:outcomes:)`` still returns it. Nobody asked for a delivery, so a
     /// delivery with nothing to say says nothing.
     ///
+    /// A metric that *failed* is the other half of the same rule, and the stricter half: a
+    /// delivery reports only when every attempted metric either produced a value or genuinely
+    /// had no samples. Absence is expressed as `nil` whichever it was, and consumers post `nil`
+    /// as zero, so a payload carrying one failed metric silently overwrites a real distance or
+    /// a real calorie count with a zero. Partial truth is worth less here than the failure.
+    ///
     /// - Parameters:
     ///   - date: The day the metrics were read for.
     ///   - outcomes: The result of every attempted metric read.
     /// - Returns: The walking activity, or `nil` when no metric was read at all.
-    /// - Throws: Whatever ``aggregate(date:outcomes:)`` throws.
+    /// - Throws: Whatever ``aggregate(date:outcomes:)`` throws, or
+    ///   ``WalkingActivityReadError/metricsUnreadable(underlying:)`` when some metrics read and
+    ///   others failed.
     static func deliveryActivity(date: Date, outcomes: [WalkingMetric: Result<Double?, any Error>]) throws -> WalkingActivityData? {
         let activity = try aggregate(date: date, outcomes: outcomes)
+
+        let failures = failures(in: outcomes)
+        guard failures.isEmpty else {
+            throw WalkingActivityReadError.metricsUnreadable(underlying: failures)
+        }
+
         return carriesAMetric(activity) ? activity : nil
     }
 
@@ -93,7 +104,17 @@ enum WalkingActivityReadAggregator {
             || activity.activeCalories != nil
             || activity.distanceMeters != nil
             || activity.durationMinutes != nil
-            || activity.averageHeartRate != nil
+    }
+
+    /// Every failure among the attempted reads, in no particular order.
+    ///
+    /// - Parameter outcomes: The result of every attempted metric read.
+    /// - Returns: The errors, empty when every attempted metric answered.
+    private static func failures(in outcomes: [WalkingMetric: Result<Double?, any Error>]) -> [any Error] {
+        outcomes.values.compactMap { outcome in
+            guard case .failure(let error) = outcome else { return nil }
+            return error
+        }
     }
 
     /// Aggregates outcomes without judging them, degrading every failed metric to `nil`.

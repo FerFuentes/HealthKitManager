@@ -138,17 +138,6 @@ final class HealthKitObservationCoordinator<Activity: Sendable>: @unchecked Send
         )
     }
 
-    /// Rebuilds the registered query against the descriptors as they are now, when something
-    /// the descriptors are derived from has changed. Does nothing when not observing, so the
-    /// next `startObserving` picks the new descriptors up anyway.
-    func reregisterIfObserving() {
-        lock.withLock {
-            guard subscriber != nil, let registerQuery else { return }
-            haltActiveQuery()
-            activeQuery = registerQuery()
-        }
-    }
-
     /// Re-registers the query once a backoff elapses, unless observation stopped meanwhile.
     private func reregisterAfterBackoff() {
         lock.withLock {
