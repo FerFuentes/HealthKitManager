@@ -43,8 +43,10 @@ struct WalkingActivityObserverTests {
     /// so it is held structurally instead: `readWalkingActivityDelivery` takes no sample-type
     /// parameter, leaving nothing for a caller to pass it.
     @Test func theDeliveryPayloadIsTheWalkingTypesWithoutHeartRate() {
-        #expect(HealthKitManager.walkingActivityDeliverySampleTypes
-            == Set(HealthKitManager.forWalkingActivityQuantityType.subtracting([HKQuantityType(.heartRate)]).map { $0 as HKSampleType }))
-        #expect(!HealthKitManager.walkingActivityDeliverySampleTypes.contains(HKQuantityType(.heartRate) as HKSampleType))
+        #expect(HealthKitManager.walkingActivityDeliverySampleTypes == Set([
+            HKQuantityType(.stepCount) as HKSampleType,
+            HKQuantityType(.distanceWalkingRunning) as HKSampleType,
+            HKQuantityType(.activeEnergyBurned) as HKSampleType
+        ]))
     }
 }

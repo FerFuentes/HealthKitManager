@@ -38,11 +38,16 @@ public protocol HealthActivitiesPermission {
     /// app**, not what a delivery reads: every delivery reads the whole walking payload, so
     /// narrowing these never narrows what gets posted.
     ///
-    /// Enabling clears every background delivery first, so the store ends up matching the
-    /// requested set exactly rather than accumulating whatever a previous version enabled.
-    /// That clear is store-wide, which is safe while walking is the only delivery this app
-    /// turns on; a caller that also enables sleep, nutrition or workouts must enable walking
-    /// before those, not after.
+    /// Enabling synchronises the store by difference: the requested types are enabled, and
+    /// walking types that were enabled before and are not requested now are disabled. Without
+    /// that, narrowing the set left the dropped types enabled with no observer descriptor to
+    /// acknowledge them, and iOS spends three wake-ups on each before giving up.
+    ///
+    /// The previous set falls back to every walking type when nothing has been enabled in this
+    /// process yet, and that fallback is load-bearing rather than a default: what a previous
+    /// *version* of the app enabled outlives the process that enabled it, so a cold launch has
+    /// to assume the widest set it could have been to clear it. Narrowing this to only what
+    /// this process enabled would leave an upgraded device carrying the old set forever.
     ///
     /// - Important: The caller must have requested authorization for the whole walking
     ///   payload — steps, distance and calories — not only for the types it wakes on. A
@@ -123,12 +128,15 @@ extension HealthActivitiesPermission {
     public func setBackgroundWalkingActivityUpdates(enabled: Bool, toRead: Set<HKQuantityType>? = nil) async throws {
         let manager = HealthKitManager.shared
         let types = toRead ?? HealthKitManager.forWalkingActivityQuantityType
-
-        if enabled {
-            try await manager.disableAllBackgroundDelivery()
-        }
+        let previouslyEnabled = manager.walkingActivityBackgroundTypes
 
         try await manager.setBackgroundDelivery(enable: enabled, types: Set(types.map { $0 as HKSampleType }))
+
+        let orphaned = enabled ? previouslyEnabled.subtracting(types) : []
+        if !orphaned.isEmpty {
+            try await manager.setBackgroundDelivery(enable: false, types: Set(orphaned.map { $0 as HKSampleType }))
+        }
+
         manager.rememberWalkingActivityBackgroundTypes(enabled ? types : nil)
     }
 
