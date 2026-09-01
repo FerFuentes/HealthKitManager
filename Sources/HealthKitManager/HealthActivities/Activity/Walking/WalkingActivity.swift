@@ -58,6 +58,30 @@ public protocol WalkingActivity {
     ///   `WalkingActivityReadError.allMetricsFailed` when no metric could be read, or a
     ///   `Permission.Error` when authorization cannot be established.
     func readWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async throws -> WalkingActivityData
+
+    /// Reads walking activity for many days at once, one query per metric.
+    ///
+    /// The per-day read asks HealthKit once per day per metric, so a month-long sweep
+    /// spends most of its time in round trips rather than in work. This reads each metric
+    /// once across the window the dates span and answers every requested day out of it,
+    /// which is what makes a sweep survive a background budget it would otherwise be
+    /// suspended in the middle of.
+    ///
+    /// Each day carries its own verdict, so a caller counting why days were skipped keeps
+    /// the granularity the per-day read gave it: a metric whose window read fails is
+    /// re-read day by day, and only that metric. A locked store fails every day without a
+    /// recovery pass, because it can answer none of them.
+    ///
+    /// The dates need not be contiguous. The window spans the earliest to the latest, and
+    /// only the days asked for are answered.
+    ///
+    /// - Parameters:
+    ///   - dates: The days to report.
+    ///   - sampleTypes: The set of sample types to include in the response.
+    /// - Returns: Each requested day, normalised to the start of that day, mapped to its
+    ///   activity or to the failure that stopped it — the same verdicts
+    ///   ``readWalkingActivityData(by:sampleTypes:)`` produces for a single day.
+    func readWalkingActivityData(for dates: [Date], sampleTypes: Set<HKSampleType>) async -> [Date: Result<WalkingActivityData, any Error>]
     
     /// Gets the average heart rate for a specific date.
     /// - Parameter date: The date to query.
@@ -101,6 +125,10 @@ extension WalkingActivity {
 
     public func readWalkingActivityData(by date: Date, sampleTypes: Set<HKSampleType>) async throws -> WalkingActivityData {
         try await HealthKitManager.shared.readWalkingActivity(date: date, sampleTypes: sampleTypes)
+    }
+
+    public func readWalkingActivityData(for dates: [Date], sampleTypes: Set<HKSampleType>) async -> [Date: Result<WalkingActivityData, any Error>] {
+        await HealthKitManager.shared.readWalkingActivityWindow(dates: dates, sampleTypes: sampleTypes)
     }
     
     public func observeWalkingActivityInBackground(_ start: Bool, completion: @escaping @Sendable (Result<WalkingActivityData?, Error>) -> Void) {
