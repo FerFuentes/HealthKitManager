@@ -134,8 +134,16 @@ internal extension HealthKitManager {
     /// - Parameters:
     ///   - date: The date to query.
     ///   - sampleTypes: The sample types whose metrics should be read.
+    ///   - isStoreLocked: Whether the store is locked; a locked store is not queried.
     /// - Returns: One outcome per attempted metric; unsupported types are absent.
-    private func walkingActivityMetricOutcomes(date: Date, sampleTypes: Set<HKSampleType>) async -> [WalkingMetric: Result<Double?, any Error>] {
+    func walkingActivityMetricOutcomes(
+        date: Date,
+        sampleTypes: Set<HKSampleType>,
+        isStoreLocked: @Sendable () async -> Bool = StoreLock.isLocked
+    ) async -> [WalkingMetric: Result<Double?, any Error>] {
+        if await isStoreLocked() {
+            return WalkingMetric.failingEveryRequested(in: sampleTypes, with: HKError(.errorDatabaseInaccessible))
+        }
         async let stepsOutcome = metricOutcome(attempted: sampleTypes.contains(HKQuantityType(.stepCount))) {
             try await self.getStepCount(date: date)
         }
