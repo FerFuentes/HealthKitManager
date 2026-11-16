@@ -30,11 +30,13 @@ internal extension HealthKitManager {
     ///   - dates: The days to report. Need not be contiguous; the window spans the
     ///     earliest to the latest and only these days are answered.
     ///   - sampleTypes: The metrics to attempt.
+    ///   - isStoreLocked: Whether the store is locked; a locked store is not queried.
     /// - Returns: Per metric, either the window's values by day or the failure that
     ///   stopped that metric. A metric that was not requested is absent.
     func walkingActivityRangeOutcomes(
         dates: [Date],
-        sampleTypes: Set<HKSampleType>
+        sampleTypes: Set<HKSampleType>,
+        isStoreLocked: @Sendable () async -> Bool = StoreLock.isLocked
     ) async -> [WalkingMetric: Result<WalkingMetricDayValues, any Error>] {
         let days = WalkingWindow.days(for: dates)
         guard let first = days.first, let last = days.last else { return [:] }
@@ -42,11 +44,10 @@ internal extension HealthKitManager {
         do {
             try await statusForAuthorizationRequest(toWrite: [], toRead: sampleTypes)
         } catch {
-            return Dictionary(
-                uniqueKeysWithValues: WalkingMetric.walkingPayload
-                    .filter { $0.isRequested(in: sampleTypes) }
-                    .map { ($0, .failure(error)) }
-            )
+            return WalkingMetric.failingEveryRequested(in: sampleTypes, with: error)
+        }
+        if await isStoreLocked() {
+            return WalkingMetric.failingEveryRequested(in: sampleTypes, with: HKError(.errorDatabaseInaccessible))
         }
 
         async let stepsOutcome = rangeOutcome(attempted: sampleTypes.contains(HKQuantityType(.stepCount))) {
@@ -183,6 +184,14 @@ extension WalkingMetric {
     static let walkingPayload: [WalkingMetric] = [
         .steps, .durationMinutes, .distanceMeters, .activeCalories, .averageHeartRate
     ]
+
+    /// Every metric a read over `sampleTypes` attempts, each failed with `error`.
+    static func failingEveryRequested<Value>(
+        in sampleTypes: Set<HKSampleType>,
+        with error: any Error
+    ) -> [WalkingMetric: Result<Value, any Error>] {
+        Dictionary(uniqueKeysWithValues: walkingPayload.filter { $0.isRequested(in: sampleTypes) }.map { ($0, .failure(error)) })
+    }
 
     /// Whether a sweep over `sampleTypes` attempts this metric.
     func isRequested(in sampleTypes: Set<HKSampleType>) -> Bool {
